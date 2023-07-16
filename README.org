@@ -1,0 +1,72 @@
+#+OPTIONS: ^:nil tags:nil
+
+* About
+
+Document Elisp code with chat GPT.
+
+* Table of Contents                                       :TOC_2_gh:QUOTE:
+#+BEGIN_QUOTE
+- [[#about][About]]
+- [[#requirements][Requirements]]
+- [[#installation][Installation]]
+  - [[#with-use-package-and-straightel][With use-package and straight.el]]
+  - [[#manual-installation][Manual installation]]
+- [[#usage][Usage]]
+  - [[#commands][Commands]]
+  - [[#customization][Customization]]
+#+END_QUOTE
+
+* Requirements
+
+| Name  | Version |
+|-------+---------|
+| Emacs |    27.1 |
+
+
+* Installation
+
+** With use-package and straight.el
+#+begin_src elisp :eval no
+(use-package gpt-doc
+  :straight (gpt-doc
+             :repo "KarimAziev/gpt-doc"
+             :type git
+             :host github)
+  :commands (gpt-doc-document-current-function))
+#+end_src
+
+** Manual installation
+
+Download the source code and put it wherever you like, e.g. into =~/.emacs.d/gpt-doc/=
+
+#+begin_src shell :eval no
+git clone https://github.com/KarimAziev/gpt-doc.git ~/.emacs.d/gpt-doc/
+#+end_src
+
+Add the downloaded directory to the load path:
+
+#+begin_src elisp :eval no
+(add-to-list 'load-path "~/.emacs.d/gpt-doc/")
+(require 'gpt-doc)
+#+end_src
+
+* Usage
+
+** Commands
+
+**** ~gpt-doc-document-current-function~
+Document current Elisp definition using the =gpt-3= =api=. It prompts the user for code input, sends the code to an external service for documentation generation, and inserts the generated documentation into the current buffer. The generated documentation is formatted to fit within an 80-column screen.
+** Customization
+
+**** ~gpt-doc-no-args-directive~
+System prompt (directive) for ChatGPT to document Elisp code without arguments. These are system instructions sent at the beginning of each request to ChatGPT.
+**** ~gpt-doc-with-args-directive~
+System prompt (directive) for ChatGPT to document Elisp code with arguments. These are system instructions sent at the beginning of each request to ChatGPT.
+**** ~gpt-doc-gpt-url~
+Url queried by =gpt=.
+**** ~gpt-doc-gpt-model~
+=api= Model for OpenAI.
+**** ~gpt-doc-gpt-temperature~
+"Temperature" of ChatGPT response. This is a number between 0.0 and 2.0 that controls the randomness of the response, with 2.0 being the most random.
+**** ~gpt-doc-api-key~
+An OpenAI =api= key (string). Can also be a function of no arguments that returns an =api= key (more secure).
