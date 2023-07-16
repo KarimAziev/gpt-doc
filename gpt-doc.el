@@ -137,6 +137,7 @@ request to ChatGPT."
             ("transient-define-prefix" . 3)))
   "A list of positions of docstrings for various Elisp functions.")
 
+
 (defvar gpt-doc-symbols-to-narrow
   (mapcar #'car
           gpt-doc-docstring-positions))
@@ -301,8 +302,8 @@ By default, `gpt-doc-gpt-url' is used as URL and \"apikey\" as USER."
        (let ((key (read-string "GPT Api Key: ")))
          (customize-set-value 'gpt-doc-api-key key)
          (when (yes-or-no-p "Save this key?")
-           (customize-save-variable 'gpt-doc-api-key key)))
-       gpt-doc-api-key))
+           (customize-save-variable 'gpt-doc-api-key key))))
+     gpt-doc-api-key)
     (_ (error "`gpt-doc-api-key' is not set"))))
 
 
@@ -333,9 +334,6 @@ Argument SYSTEM-PROMPT is the prompt for the system role."
                     (with-current-buffer buffer
                       (buffer-substring-no-properties
                        url-http-end-of-headers (point-max))))))
-    (print data)
-    (print gpt-prompt)
-    (print response)
     (if (not buffer)
         (error "Failed to send request to OpenAI API")
       (condition-case gpt-err
