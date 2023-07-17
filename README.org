@@ -1,8 +1,9 @@
 #+OPTIONS: ^:nil tags:nil
 
 * About
+Document Elisp code using OpenAI's GPT language model according to Emacs style requirements.
 
-Document Elisp code with chat GPT.
+[[./gpt-doc-demo.gif][./gpt-doc-demo.gif]]
 
 * Table of Contents                                       :TOC_2_gh:QUOTE:
 #+BEGIN_QUOTE
@@ -11,19 +12,22 @@ Document Elisp code with chat GPT.
 - [[#installation][Installation]]
   - [[#with-use-package-and-straightel][With use-package and straight.el]]
   - [[#manual-installation][Manual installation]]
+- [[#setup][Setup]]
 - [[#usage][Usage]]
-  - [[#commands][Commands]]
-  - [[#customization][Customization]]
+- [[#customization][Customization]]
 #+END_QUOTE
 
 * Requirements
 
-| Name  | Version |
-|-------+---------|
-| Emacs |    27.1 |
+| Name           | Version |
+|----------------+---------|
+| Emacs          |    27.1 |
+| [[https://platform.openai.com/account/api-keys][OpenAI API Key]] |         |
 
 
 * Installation
+
+To use =gpt-doc.el=, make sure you have Emacs version 27.1 or later installed.
 
 ** With use-package and straight.el
 #+begin_src elisp :eval no
@@ -50,23 +54,50 @@ Add the downloaded directory to the load path:
 (require 'gpt-doc)
 #+end_src
 
+* Setup
+
+Make sure that you have an [[https://platform.openai.com/account/api-keys][OpenAI API key]] before using the library.
+
+Then you can use several options how to use it:
+
+- Assign the api key to the ~gpt-doc-api-key~ as value:
+#+begin_src emacs-lisp
+(setq gpt-doc-api-key "YOUR_API_KEY_TOKEN")
+#+end_src
+
+- Add the such entry to the authsources (typically =~/.authinfo.gpg= or =~/.authinfo=).
+#+begin_example
+machine api.openai.com login apikey password YOUR_API_KEY_TOKEN
+#+end_example
+
+- Assign custom function that returns the key to ~gpt-doc-api-key~.
+
+  #+begin_src emacs-lisp
+(defun my-gpt-get-api-key ()
+  "Return api key for gpt."
+  (let ((api-key "YOUR_API_KEY_TOKEN"))
+    api-key))
+
+(setq gpt-doc-api-key #'my-gpt-get-api-key)
+#+end_src
+
 * Usage
 
-** Commands
+Run ~M-x gpt-doc-document-current-function~ inside or at the start of the function/macro definition.
 
-**** ~gpt-doc-document-current-function~
-Document current Elisp definition using the =gpt-3= =api=. It prompts the user for code input, sends the code to an external service for documentation generation, and inserts the generated documentation into the current buffer. The generated documentation is formatted to fit within an 80-column screen.
-** Customization
+The generated documentation will be inserted into the correct place for documentation.
 
-**** ~gpt-doc-no-args-directive~
+* Customization
+
+*** ~gpt-doc-api-key~
+An OpenAI API key. It can be a string or a function that returns the API key.
+*** ~gpt-doc-gpt-url~
+The URL queried by GPT. The default URL is https://api.openai.com/v1/chat/completions.
+*** ~gpt-doc-no-args-directive~
 System prompt (directive) for ChatGPT to document Elisp code without arguments. These are system instructions sent at the beginning of each request to ChatGPT.
-**** ~gpt-doc-with-args-directive~
+*** ~gpt-doc-with-args-directive~
 System prompt (directive) for ChatGPT to document Elisp code with arguments. These are system instructions sent at the beginning of each request to ChatGPT.
-**** ~gpt-doc-gpt-url~
-Url queried by =gpt=.
-**** ~gpt-doc-gpt-model~
-=api= Model for OpenAI.
-**** ~gpt-doc-gpt-temperature~
-"Temperature" of ChatGPT response. This is a number between 0.0 and 2.0 that controls the randomness of the response, with 2.0 being the most random.
-**** ~gpt-doc-api-key~
-An OpenAI =api= key (string). Can also be a function of no arguments that returns an =api= key (more secure).
+*** ~gpt-doc-gpt-model~
+=api= Model for OpenAI. The default model is "gpt-3.5-turbo".
+*** ~gpt-doc-gpt-temperature~
+The "temperature" of the GPT response, controlling the randomness. The value should be between 0.0 and 2.0, with 2.0 being the most random.
