@@ -1,7 +1,7 @@
 #+OPTIONS: ^:nil tags:nil
 
 * About
-Document Elisp code using OpenAI's GPT language model according to Emacs style requirements.
+Document Elisp code using OpenAI's GPT language model according to Emacs' style requirements.
 
 [[./gpt-doc-demo.gif][./gpt-doc-demo.gif]]
 
@@ -58,20 +58,19 @@ Add the downloaded directory to the load path:
 
 Make sure that you have an [[https://platform.openai.com/account/api-keys][OpenAI API key]] before using the library.
 
-Then you can use several options how to use it:
+You can choose from several options to use it:
 
-- Assign the api key to the ~gpt-doc-api-key~ as value:
+1. Assign the API key to the =gpt-doc-api-key= variable:
 #+begin_src emacs-lisp
 (setq gpt-doc-api-key "YOUR_API_KEY_TOKEN")
 #+end_src
 
-- Add the such entry to the authsources (typically =~/.authinfo.gpg= or =~/.authinfo=).
+2. Add the following entry to your auth sources file (typically =~/.authinfo.gpg= or =~/.authinfo=):
 #+begin_example
 machine api.openai.com login apikey password YOUR_API_KEY_TOKEN
 #+end_example
 
-- Assign custom function that returns the key to ~gpt-doc-api-key~.
-
+3. Assign a custom function that returns the API key to =gpt-doc-api-key=:
   #+begin_src emacs-lisp
 (defun my-gpt-get-api-key ()
   "Return api key for gpt."
@@ -98,6 +97,6 @@ System prompt (directive) for ChatGPT to document Elisp code without arguments. 
 *** ~gpt-doc-with-args-directive~
 System prompt (directive) for ChatGPT to document Elisp code with arguments. These are system instructions sent at the beginning of each request to ChatGPT.
 *** ~gpt-doc-gpt-model~
-=api= Model for OpenAI. The default model is "gpt-3.5-turbo".
+API Model for OpenAI. The default model is "gpt-3.5-turbo".
 *** ~gpt-doc-gpt-temperature~
 The "temperature" of the GPT response, controlling the randomness. The value should be between 0.0 and 2.0, with 2.0 being the most random.
