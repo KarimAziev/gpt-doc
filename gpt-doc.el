@@ -357,6 +357,18 @@ Argument ELEM is the element to be checked."
        (not (eq elem t))
        (symbolp elem)))
 
+(defun gpt-doc-extract-sym (sexp arg)
+  "Return the symbol extracted from the given SEXP and argument.
+Argument SEXP is the SEXP from which the symbol is extracted.
+Argument ARG is the argument used to extract the symbol from the SEXP."
+  (let ((sym
+         (pcase (car sexp)
+           ((or 'cl-defun 'cl-defmethod)
+            (if (consp arg)
+                (car arg) arg))
+           (_ arg))))
+    (when (gpt-doc-symbol-p sym)
+      sym)))
 
 (defun gpt-doc-get-args (sexp)
   "Return a list of arguments extracted from a function/macro definition.
@@ -372,18 +384,13 @@ Argument SEXP is the function/macro definition SEXP."
          (let (elems)
            (if (catch 'not-arg
                  (while (consp args)
-                   (let ((elem (pop args)))
+                   (let* ((elem (pop args))
+                          (sym (gpt-doc-extract-sym sexp elem)))
                      (if
-                         (and
-                          (pcase (car sexp)
-                            ('cl-defun (gpt-doc-symbol-p
-                                        (if (listp elem)
-                                            (car elem)
-                                          elem)))
-                            (_ (gpt-doc-symbol-p elem)))
-                          (or (not args)
-                              (consp args)))
-                         (push elem elems)
+                         (and sym
+                              (or (not args)
+                                  (consp args)))
+                         (push sym elems)
                        (throw 'not-arg t)))))
                nil
              (seq-remove
