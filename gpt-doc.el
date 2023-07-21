@@ -26,7 +26,21 @@
 
 ;;; Commentary:
 
-;; Document Elisp code with chat GPT
+;; Document Elisp code using the GPT-3 API.
+
+;;  Setup
+
+;; To use this library, you need to have an OpenAI API key. You can either set
+;; `gpt-doc-api-key' as a string directly or define a function that returns the API key.
+
+;;  Usage
+
+;; `gpt-doc-document-current-function'
+
+;; This command documents the current Elisp definition using the GPT-3 API. It
+;; prompts the user for code input, sends the code to the API for documentation
+;; generation, and inserts the generated documentation into the current buffer.
+
 
 ;;; Code:
 
@@ -51,8 +65,9 @@
 Can also be a function of no arguments that returns an API
 key (more secure)."
   :group 'gpt-doc
-  :type '(choice
+  :type '(radio
           (string :tag "API key")
+          (function-item gpt-doc-api-key-from-auth-source)
           (function :tag "Function that returns the API key")))
 
 (defcustom gpt-doc-gpt-temperature 0.1
@@ -64,7 +79,7 @@ of the response, with 2.0 being the most random."
   :type 'number)
 
 (defcustom gpt-doc-gpt-model "gpt-3.5-turbo"
-  "API Model for OpenAI."
+  "A string variable representing the API model for OpenAI."
   :group 'gpt-doc
   :type 'string)
 
@@ -77,7 +92,7 @@ of the response, with 2.0 being the most random."
 
 Step 1: The user will provide you with emacs-lisp code that includes a function definition enclosed in triple quotes.
 
-Step 2: Write a short documentation (maximum 80 characters) using imperative verbs and avoiding third-party phrasing. For example, instead of saying \"This function returns ...\", simply write \"Return ...\"
+Step 2: Write a short documentation (maximum 70 characters) using imperative verbs and avoiding third-party phrasing. For example, instead of saying \"This function returns ...\", simply write \"Return ...\"
 
 Step 3: Describe each argument in one sentence, but only if there are arguments. Make sure to mention and capitalize every argument from the user code. Format the documentation string to fit within an 80-column screen in Emacs. Use imperative verbs and avoid third-party phrasing. Write a short documentation (maximum 80 characters) for the code using imperative verbs and avoiding third-party phrasing. Do not include the function name. If there are arguments, mention them without quotes and capitalize their names. Do not include \"No arguments\" if there are none. If there are arguments, for example, \"a\" and \"b\", instead of writing:
 \"ARGUMENTS:
@@ -89,6 +104,23 @@ write more literally, for example:
 
 Step 4: Concatenate the sentences with an empty line. Do not use headings or markdown syntax. Capitalize only the arguments mentioned in Step 2. Do not include the function name."
   "System prompt (directive) for ChatGPT to document Elisp code with arguments.
+
+These are system instructions sent at the beginning of each
+request to ChatGPT."
+  :group 'gpt-doc
+  :type 'string)
+
+(defcustom gpt-doc-variable-prompt
+  "Please follow these step-by-step instructions to respond to user inputs:
+
+Step 1: The user will provide you with emacs-lisp code that includes a variable enclosed in triple quotes.
+
+Step 2: Write a short documentation (maximum 70 characters) using imperative verbs and avoiding third-party phrasing. For example, instead of saying \"This variable is a string...\", simply write \"A string ...\" and so on.
+
+Step 3: If it is a custom variable, also decribe it's :type.
+
+Step 4: Concatenate the sentences with an empty line. Do not use headings or markdown syntax. Do not include the variable name."
+  "System prompt (directive) for ChatGPT to document Elisp variables.
 
 These are system instructions sent at the beginning of each
 request to ChatGPT."
@@ -110,14 +142,13 @@ request to ChatGPT."
   :group 'gpt-doc
   :type 'string)
 
-
-(defvar gpt-doc-docstring-positions
+(defcustom gpt-doc-docstring-positions
   (mapcar (lambda (it)
             (setcar it (intern (car it)))
             it)
           '(("defun" . 3)
             ("defmacro" . 3)
-            ("defsubst" . 4)
+            ("defsubst" . 3)
             ("defcustom" . 3)
             ("define-skeleton" . 2)
             ("define-compilation-mode" . 3)
@@ -128,14 +159,25 @@ request to ChatGPT."
             ("cl-defsubst" . 3)
             ("cl-defmacro" . 3)
             ("cl-defgeneric" . 3)
-            ("cl-defmethod" . 6)
+            ("cl-defmethod" . gpt-doc-forward-to-cl-defmethods-args)
             ("defalias" . 4)
             ("defhydra" . 4)
             ("define-widget" . 3)
             ("transient-define-suffix" . 3)
             ("transient-define-argument" . 3)
             ("transient-define-prefix" . 3)))
-  "A list of positions of docstrings for various Elisp functions.")
+  "An alist that maps definition types to their respective documentation positions.
+If the value of cell is a number, move forward across N balanced expressions.
+If the value is a function, it will be called with definition sexp and should
+return number to move forward across."
+  :group 'gpt-doc
+  :type '(alist
+          :key-type symbol
+          :value-type (choice
+                       (number :tag "Documentation position")
+                       (function :tag "Custom function"))))
+
+
 
 
 (defvar gpt-doc-symbols-to-narrow
@@ -195,43 +237,6 @@ If SYMBOLS is nil use `km-elisp-function-symbols'"
 
 
 
-(defvar gpt-doc-docstring-positions
-  (mapcar (lambda (it)
-            (setcar it (intern (car it)))
-            it)
-          '(("defun" . 3)
-            ("defmacro" . 3)
-            ("defsubst" . 4)
-            ("defcustom" . 3)
-            ("define-skeleton" . 2)
-            ("define-compilation-mode" . 3)
-            ("define-minor-mode" . 2)
-            ("define-derived-mode" . 4)
-            ("define-generic-mode" . 8)
-            ("ert-deftest" . 3)
-            ("cl-defun" . 3)
-            ("cl-defsubst" . 3)
-            ("cl-defmacro" . 3)
-            ("cl-defgeneric" . 3)
-            ("cl-defmethod" . 6)
-            ("defalias" . 4)
-            ("defhydra" . 4)
-            ("defgroup" . 3)
-            ("deftheme" . 3)
-            ("define-widget" . 3)
-            ("transient-define-suffix" . 3)
-            ("transient-define-argument" . 3)
-            ("transient-define-prefix" . 3)
-            ("defvar" . 4)
-            ("defvar-local" . 4)
-            ("cl-defstruct" . 3)
-            ("easy-mmode-define-minor-mode" . 2)
-            ("transient-define-infix" . 3)
-            ("defface" . 3)))
-  "A list of positions of docstrings for various Elisp functions.")
-
-
-
 (defun gpt-doc--json-parse-string (str &optional object-type array-type
                                            null-object false-object)
   "Parse STR with natively compiled function or with json library.
@@ -272,18 +277,15 @@ represent a JSON false value.  It defaults to `:false'."
       (json-read-from-string str))))
 
 
-(defun gpt-doc-api-key-from-auth-source (&optional url user)
-  "Return the API key from the auth source for URL and USER.
-By default, `gpt-doc-gpt-url' is used as URL and \"apikey\" as USER."
+(defun gpt-doc-api-key-from-auth-source (&optional url)
+  "Return the fist API key from the auth source for URL.
+By default, the value of `gpt-doc-gpt-url' is used as URL."
   (require 'auth-source)
   (require 'url-parse)
   (if-let* ((url-obj (url-generic-parse-url (or url gpt-doc-gpt-url)))
             (host (url-host url-obj))
             (secret (plist-get (car (auth-source-search
                                      :host host
-                                     :user
-                                     (or user
-                                         "apikey")
                                      :require '(:secret)))
                                :secret)))
       (if (functionp secret)
@@ -293,7 +295,9 @@ By default, `gpt-doc-gpt-url' is used as URL and \"apikey\" as USER."
 
 
 (defun gpt-doc-get-api-key ()
-  "Get api key from `gpt-doc-api-key'."
+  "Return the value of `gpt-doc-api-key' if it is a function.
+If it is a string, prompt the user for a key, save it, and renturn the key.
+If `gpt-doc-api-key' is not set, raise an error."
   (pcase gpt-doc-api-key
     ((pred functionp)
      (funcall gpt-doc-api-key))
@@ -373,31 +377,27 @@ Argument ARG is the argument used to extract the symbol from the SEXP."
 (defun gpt-doc-get-args (sexp)
   "Return a list of arguments extracted from a function/macro definition.
 Argument SEXP is the function/macro definition SEXP."
-  (and (memq (car-safe sexp)
-             '(defun defmacro defun*
-                defsubst
-                cl-defun define-inline
-                cl-defgeneric
-                cl-defmethod define-advice))
-       (let ((args (car-safe
-                    (cdr-safe (cdr-safe sexp)))))
-         (let (elems)
-           (if (catch 'not-arg
-                 (while (consp args)
-                   (let* ((elem (pop args))
-                          (sym (gpt-doc-extract-sym sexp elem)))
-                     (if
-                         (and sym
-                              (or (not args)
-                                  (consp args)))
-                         (push sym elems)
-                       (throw 'not-arg t)))))
-               nil
-             (seq-remove
-              (lambda (it)
-                (string-prefix-p "&"
-                                 (symbol-name it)))
-              elems))))))
+  (when (and (proper-list-p sexp)
+             (assq (car-safe sexp)
+                   gpt-doc-docstring-positions))
+    (let ((args (seq-find #'proper-list-p sexp)))
+      (let (elems)
+        (if (catch 'not-arg
+              (while (consp args)
+                (let* ((elem (pop args))
+                       (sym (gpt-doc-extract-sym sexp elem)))
+                  (if
+                      (and sym
+                           (or (not args)
+                               (consp args)))
+                      (push sym elems)
+                    (throw 'not-arg t)))))
+            nil
+          (seq-remove
+           (lambda (it)
+             (string-prefix-p "&"
+                              (symbol-name it)))
+           elems))))))
 
 (defun gpt-doc--upcase-args (sexp response)
   "Return the RESPONSE with all arguments upcased.
@@ -462,12 +462,88 @@ Argument RESPONSE is the GPT RESPONSE string."
       "\\.\\([\s]?+\\)" t)
      "\n"))))
 
+
+(defun gpt-doc-forward-sexp (count)
+  "Return the position after moving forward by COUNT balanced sexps.
+Argument COUNT is the number of balanced sexps to move forward."
+  (with-syntax-table emacs-lisp-mode-syntax-table
+    (let ((pos))
+      (while (and (> count 0)
+                  (or (not pos)
+                      (= pos (point))))
+        (setq count (1- count))
+        (ignore-errors (forward-sexp 1))
+        (setq pos (point)))
+      pos)))
+
+(defun gpt-doc-first-list-pos (sexp)
+  "Return position of the first proper list in the given SEXP.
+Argument SEXP is the SEXP to search for proper lists."
+  (and (proper-list-p sexp)
+       (seq-position sexp nil (lambda (a &rest _)
+                                (proper-list-p a)))))
+
+(defun gpt-doc-first-doc-pos (sexp)
+  "Return the position of documentation string after args lists in the given SEXP.
+Argument SEXP is the SEXP to search for the documentation string."
+  (when-let* ((arg-pos (gpt-doc-first-list-pos sexp))
+              (doc (nth (1+ arg-pos) sexp)))
+    (and (stringp doc)
+         (1+ arg-pos))))
+
+(defun gpt-doc-remove-doc-string (sexp)
+  "Return a modified version of the input SEXP with the doc string removed.
+Argument SEXP is the s-expression to remove the doc string from."
+  (when-let* ((doc-pos (gpt-doc-first-doc-pos sexp))
+              (left (seq-subseq sexp 0 doc-pos)))
+    (if (> (length sexp)
+           (1+ doc-pos))
+        (append left
+                (seq-subseq sexp (1+ doc-pos)
+                            (length sexp)))
+      left)))
+
+(defun gpt-doc-forward-to-cl-defmethods-args (sexp)
+  "Return the position of the first proper list in SEXP plus 2.
+Argument SEXP is a list."
+  (when-let ((pos
+              (and (proper-list-p sexp)
+                   (gpt-doc-first-list-pos
+                    (seq-find 'proper-list-p
+                              (seq-drop
+                               sexp 2))))))
+    (+ pos 2)))
+
+(defun gpt-doc-pp-sexp (sexp)
+  "Return a formatted string representation of a given s-expression.
+Argument SEXP is the s-expression to be formatted."
+  (let ((formatted (pp-to-string
+                    (or (gpt-doc-remove-doc-string sexp)
+                        sexp))))
+    (pcase (car sexp)
+      ((or 'defvar 'defvar-local 'defcustom)
+       formatted)
+      ((guard (gpt-doc-get-args sexp))
+       formatted)
+      (_ (with-temp-buffer
+           (insert formatted)
+           (goto-char (point-min))
+           (when (re-search-forward
+                  (regexp-opt
+                   '("nil")
+                   'symbols)
+                  nil t 1)
+             (replace-match "()"))
+           (buffer-string))))))
+
 ;;;###autoload
 (defun gpt-doc-document-current-function ()
   "Document current Elisp definition using the GPT-3 API.
+
 It prompts the user for code input, sends the code to an external service for
 documentation generation, and inserts the generated documentation into the
 current buffer.
+
 The generated documentation is formatted to fit within an 80-column screen."
   (interactive)
   (pcase-let*
@@ -486,33 +562,18 @@ The generated documentation is formatted to fit within an 80-column screen."
                  (memq (car-safe sexp)
                        types))))
        (code (if sexp
-                 (let ((formatted (pp-to-string (if (stringp (nth 3 sexp))
-                                                    (remove (nth 3 sexp) sexp)
-                                                  sexp))))
-                   (if (and (memq (car-safe sexp)
-                                  '(defun cl-defun)))
-                       (with-temp-buffer
-                         (insert formatted)
-                         (goto-char (point-min))
-                         (when (re-search-forward
-                                (regexp-opt
-                                 '("nil")
-                                 'symbols)
-                                nil t 1)
-                           (replace-match "()"))
-                         (buffer-string))
-                     formatted))
+                 (gpt-doc-pp-sexp sexp)
                (read-string "Code: ")))
-       (prompt
-        (format
-         "```emacs-lisp\n%s\n```\n"
-         code))
        (response (gpt-doc-gpt-request
-                  prompt
-                  (if (and (proper-list-p (nth 2 sexp))
-                           (> (length (nth 2 sexp)) 0))
-                      gpt-doc-with-args-directive
-                    gpt-doc-no-args-directive)))
+                  (format
+                   "```emacs-lisp\n%s\n```\n"
+                   code)
+                  (pcase (car sexp)
+                    ((or 'defvar 'defvar-local 'defcustom)
+                     gpt-doc-variable-prompt)
+                    ((guard (gpt-doc-get-args sexp))
+                     gpt-doc-with-args-directive)
+                    (_ gpt-doc-no-args-directive))))
        (text
         (cdr
          (assoc 'content
@@ -520,7 +581,8 @@ The generated documentation is formatted to fit within an 80-column screen."
                  (assoc 'message (elt (cdr (assoc 'choices
                                                   response))
                                       0)))))))
-    (setq text (gpt-doc--normalize-gpt-response sexp text))
+    (setq text (gpt-doc--normalize-gpt-response
+                sexp text))
     (with-current-buffer buff
       (if buffer-read-only
           (message "%s"
@@ -530,13 +592,16 @@ The generated documentation is formatted to fit within an 80-column screen."
           (down-list 1)
           (let ((count (cdr (assq (car sexp)
                                   gpt-doc-docstring-positions))))
-            (while (> count 0)
-              (setq count (1- count))
-              (ignore-errors (forward-sexp 1))))
-          (newline-and-indent)
-          (insert (prin1-to-string text))
-          (forward-sexp -1)
-          (forward-char 1))))))
+            (when (functionp count)
+              (setq count (funcall count sexp)))
+            (when count
+              (gpt-doc-forward-sexp count)
+              (if (looking-back "\n" 0)
+                  (indent-according-to-mode)
+                (newline-and-indent)
+                (insert (prin1-to-string text))
+                (forward-sexp -1)
+                (forward-char 1)))))))))
 
 (provide 'gpt-doc)
 ;;; gpt-doc.el ends here

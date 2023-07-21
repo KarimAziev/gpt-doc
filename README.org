@@ -1,7 +1,9 @@
 #+OPTIONS: ^:nil tags:nil
 
 * About
-Document Elisp code using OpenAI's GPT language model according to Emacs' style requirements.
+
+=gpt-doc= is an Emacs library that allows you to document Elisp code using the GPT-3 API. It provides functions to send code snippets to an external service and retrieve generated documentation, which is then automatically inserted into the correct place.
+
 
 [[./gpt-doc-demo.gif][./gpt-doc-demo.gif]]
 
@@ -12,7 +14,10 @@ Document Elisp code using OpenAI's GPT language model according to Emacs' style 
 - [[#installation][Installation]]
   - [[#with-use-package-and-straightel][With use-package and straight.el]]
   - [[#manual-installation][Manual installation]]
-- [[#setup][Setup]]
+- [[#setup-api-key][Setup API key]]
+  - [[#as-a-string][As a string:]]
+  - [[#as-a-predefined-authsource-function][As a predefined authsource function:]]
+  - [[#as-a-custom-function][As a custom function]]
 - [[#usage][Usage]]
 - [[#customization][Customization]]
 #+END_QUOTE
@@ -54,24 +59,30 @@ Add the downloaded directory to the load path:
 (require 'gpt-doc)
 #+end_src
 
-* Setup
+* Setup API key
 
-Make sure that you have an [[https://platform.openai.com/account/api-keys][OpenAI API key]] before using the library.
+Make sure that you have an [[https://platform.openai.com/account/api-keys][OpenAI API key]] before using the library. You can either set it as a string directly or define a function that returns the API key.
 
-You can choose from several options to use it:
-
-1. Assign the API key to the =gpt-doc-api-key= variable:
+** As a string:
 #+begin_src emacs-lisp
 (setq gpt-doc-api-key "YOUR_API_KEY_TOKEN")
 #+end_src
 
-2. Add the following entry to your auth sources file (typically =~/.authinfo.gpg= or =~/.authinfo=):
+** As a predefined authsource function:
+Add the following entry to your auth sources file (typically =~/.authinfo.gpg= or =~/.authinfo=):
 #+begin_example
 machine api.openai.com login apikey password YOUR_API_KEY_TOKEN
 #+end_example
+And assign ~gpt-doc-api-key-from-auth-source~ to ~gpt-doc-api-key~:
 
-3. Assign a custom function that returns the API key to =gpt-doc-api-key=:
-  #+begin_src emacs-lisp
+#+begin_src emacs-lisp
+(setq gpt-doc-api-key #'gpt-doc-api-key-from-auth-source)
+#+end_src
+
+** As a custom function
+ This function should return the API key.
+
+ #+begin_src emacs-lisp
 (defun my-gpt-get-api-key ()
   "Return api key for gpt."
   (let ((api-key "YOUR_API_KEY_TOKEN"))
@@ -82,9 +93,9 @@ machine api.openai.com login apikey password YOUR_API_KEY_TOKEN
 
 * Usage
 
-Run ~M-x gpt-doc-document-current-function~ inside or at the start of the function/macro definition.
+Run ~M-x gpt-doc-document-current-function~ inside or at the start of the variable/function/macro definition.
 
-The generated documentation will be inserted into the correct place for documentation.
+The generated documentation will be formatted and inserting automatically according to Emacs Emacs' style requirements. The generated documentation is formatted to fit within an 80-column screen.
 
 * Customization
 
@@ -93,10 +104,14 @@ An OpenAI API key. It can be a string or a function that returns the API key.
 *** ~gpt-doc-gpt-url~
 The URL queried by GPT. The default URL is https://api.openai.com/v1/chat/completions.
 *** ~gpt-doc-no-args-directive~
-System prompt (directive) for ChatGPT to document Elisp code without arguments. These are system instructions sent at the beginning of each request to ChatGPT.
+System prompt for ChatGPT to document Elisp functions without arguments.
 *** ~gpt-doc-with-args-directive~
-System prompt (directive) for ChatGPT to document Elisp code with arguments. These are system instructions sent at the beginning of each request to ChatGPT.
+System prompt for ChatGPT to document Elisp functions with arguments.
+*** ~gpt-doc-variable-prompt~
+System prompt for ChatGPT to document Elisp variables.
 *** ~gpt-doc-gpt-model~
-API Model for OpenAI. The default model is "gpt-3.5-turbo".
+API Model for OpenAI. The default model is ~gpt-3.5-turbo~.
 *** ~gpt-doc-gpt-temperature~
 The "temperature" of the GPT response, controlling the randomness. The value should be between 0.0 and 2.0, with 2.0 being the most random.
+*** ~gpt-doc-docstring-positions~
+An alist that maps definition types to their respective documentation positions. It is used for finding where to insert generated documentation.
