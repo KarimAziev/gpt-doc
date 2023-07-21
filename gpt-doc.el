@@ -509,7 +509,7 @@ Argument SEXP is a list."
   (when-let ((pos
               (and (proper-list-p sexp)
                    (gpt-doc-first-list-pos
-                    (seq-find 'proper-list-p
+                    (seq-find #'proper-list-p
                               (seq-drop
                                sexp 2))))))
     (+ pos 2)))
