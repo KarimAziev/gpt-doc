@@ -220,8 +220,9 @@ Return new position if changed, nil otherwise."
       result)))
 
 (defun gpt-doc-elisp-bounds-of-def-sexp (&optional symbols)
-  "Return bounds of first parent sexp which head is a member of SYMBOLS.
-If SYMBOLS is nil use `km-elisp-function-symbols'"
+  "Return the bounds of the nearest parent defintion.
+Argument SYMBOLS is an optional list of symbols to match against.
+Return a cons cell containing the start and end positions of the defun sexp."
   (gpt-doc--up-list-until-nil
    (when-let ((sexp (sexp-at-point)))
      (when-let ((start (and (listp sexp)
