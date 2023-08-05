@@ -88,21 +88,30 @@ of the response, with 2.0 being the most random."
   :group 'gpt-doc
   :type 'string)
 
-(defcustom gpt-doc-with-args-directive "Please follow these step-by-step instructions to respond to user inputs:
+(defcustom gpt-doc-args-directive
+  "Please follow these step-by-step instructions to document the Elisp function arguments:
 
-Step 1: The user will provide you with emacs-lisp code that includes a function definition enclosed in triple quotes.
+Step 1: The user will provide a function definition enclosed in triple quotes.
 
-Step 2: Write a short documentation (maximum 70 characters) using imperative verbs and avoiding third-party phrasing. For example, instead of saying \"This function returns ...\", simply write \"Return ...\"
+Step 3: Describe each argument in separate sentences. For example: \"Argument A is some description.\" \"Argument B ise some description.\" Write a short documentation (maximum 78 characters) for the code using imperative verbs and avoiding third-party phrasing.
 
-Step 3: Describe each argument in one sentence, but only if there are arguments. Make sure to mention and capitalize every argument from the user code. Format the documentation string to fit within an 80-column screen in Emacs. Use imperative verbs and avoid third-party phrasing. Write a short documentation (maximum 80 characters) for the code using imperative verbs and avoiding third-party phrasing. Do not include the function name. If there are arguments, mention them without quotes and capitalize their names. Do not include \"No arguments\" if there are none. If there are arguments, for example, \"a\" and \"b\", instead of writing:
-\"ARGUMENTS:
-- A: ...some description,
-- B: ...some description\"
-write more literally, for example:
-\"Argument A is ...some description.
-\"Argument B is ...some description.\"
+Step 4: Concatenate the sentences with an empty line. Do not use headings or markdown syntax."
+  "System prompt (directive) for ChatGPT to document Elisp arguments.
 
-Step 4: Concatenate the sentences with an empty line. Do not use headings or markdown syntax. Capitalize only the arguments mentioned in Step 2. Do not include the function name."
+These are system instructions sent at the beginning of each
+request to ChatGPT."
+  :group 'gpt-doc
+  :type 'string)
+
+(defcustom gpt-doc-with-args-directive "Please follow these step-by-step instructions to document the elisp function:
+
+Step 1: The user will provide a function definition enclosed in triple quotes.
+
+Step 2: Write a short documentation (maximum 78 characters) using imperative verbs and avoiding third-party phrasing to describe what this function does. Use sentence format.
+
+Step 3: If there are arguments, mention them without quotes and capitalize their names in separate sentences. For example: \"Argument A is some description.\" \"Argument B is some description.\" Write a short documentation (maximum 78 characters) for the code using imperative verbs and avoiding third-party phrasing.
+
+Step 4: Concatenate the sentences with an empty line. Do not use headings or markdown syntax. Capitalize only the arguments mentioned in Step 3. Do not include the function name."
   "System prompt (directive) for ChatGPT to document Elisp code with arguments.
 
 These are system instructions sent at the beginning of each
@@ -127,12 +136,11 @@ request to ChatGPT."
   :group 'gpt-doc
   :type 'string)
 
-(defcustom gpt-doc-no-args-directive
-  "Please follow these step-by-step instructions to respond to user inputs:
+(defcustom gpt-doc-no-args-directive "Please follow these step-by-step instructions to respond to user inputs:
 
 Step 1: The user will provide you with emacs-lisp code that includes a function definition enclosed in triple quotes.
 
-Step 2: Write a short documentation (maximum 80 characters) using imperative verbs and avoiding third-party phrasing. For example, instead of saying \"This function returns ...\", simply write \"Return ...\"
+Step 2: Write a short documentation (maximum 70 characters) using imperative verbs and avoiding third-party phrasing. For example, instead of saying \"This function returns ...\", simply write \"Return ...\"
 
 Step 3: Concatenate the sentences with an empty line. Do not use headings or markdown syntax. Do not include the function name."
   "System prompt (directive) for ChatGPT to document Elisp code without arguments.
@@ -349,6 +357,18 @@ Argument SYSTEM-PROMPT is the prompt for the system role."
         (error "Error while parsing API response: %s"
                (error-message-string gpt-err))))))
 
+(defun gpt-doc-response-text (response)
+  "Return the RESPONSE text from a GPT-3 API RESPONSE.
+Argument RESPONSE is the alist."
+  (cdr
+   (assq 'content
+         (cdr
+          (assq 'message
+                (elt
+                 (cdr
+                  (assq 'choices
+                        response))
+                 0))))))
 
 (defun gpt-doc-upcased-p (string)
   "Return non-nil if STRING has no lowercase."
@@ -400,6 +420,43 @@ Argument SEXP is the function/macro definition SEXP."
                               (symbol-name it)))
            elems))))))
 
+(defun gpt-doc--downcase-repeat-args (response)
+  "Downcase repeat args.
+Argument RESPONSE is the string to be processed."
+  (with-temp-buffer
+    (insert response)
+    (goto-char (point-min))
+    (when (re-search-forward
+           "Argument \\(\\(['`]?\\)\\(\\(?:\\sw\\|\\s_\\|\\\\.\\)+\\)\\([`']?\\)\\)"
+           nil t 1)
+      (let ((arg (match-string-no-properties 3)))
+        (while (re-search-forward (regexp-quote arg) nil t 1)
+          (downcase-region (match-beginning 0)
+                           (match-end 0)))))
+    (buffer-string)))
+
+(defun gpt-doc-quote-args (text)
+  "Extracts and formats quoted arguments in a given TEXT.
+
+Argument TEXT is a string that represents the text to be processed."
+  (with-temp-buffer
+    (insert text)
+    (goto-char (point-min))
+    (when (re-search-forward
+           "\\(\\(?:\\sw\\|\\s_\\|\\\\.\\)+[-]\\(?:\\sw\\|\\s_\\|\\\\.\\)+\\)"
+           nil t 1)
+      (let ((arg (match-string-no-properties 0))
+            (beg (match-beginning 0))
+            (end (match-end 0)))
+        (when (member (char-to-string (char-before beg)) '("'" "`"))
+          (setq beg (1- beg)))
+        (when (member (char-to-string (char-before end)) '("'" "`"))
+          (setq end (1+ end)))
+        (unless (gpt-doc-upcased-p arg)
+          (delete-region beg end)
+          (insert (format "`%s'" arg)))))
+    (buffer-string)))
+
 (defun gpt-doc--upcase-args (sexp response)
   "Return the RESPONSE with all arguments upcased.
 Argument SEXP is the SEXP to extract argument names from.
@@ -410,16 +467,24 @@ Argument RESPONSE is the RESPONSE string to upcase arguments in."
              (and args-names
                   (regexp-opt args-names
                               'symbols))))
-      (with-temp-buffer
-        (insert response)
-        (goto-char (point-min))
-        (while (re-search-forward regex nil t 1)
-          (let ((full (match-string-no-properties 0))
-                (beg (match-beginning 0))
-                (end (match-end 0)))
-            (unless (gpt-doc-upcased-p full)
-              (upcase-region beg end))))
-        (buffer-string))
+      (gpt-doc--downcase-repeat-args
+       (with-temp-buffer
+         (insert response)
+         (goto-char (point-min))
+         (while (re-search-forward regex nil t 1)
+           (let ((full (match-string-no-properties 0))
+                 (beg (match-beginning 0))
+                 (end (match-end 0)))
+             (if (save-excursion
+                   (goto-char beg)
+                   (skip-chars-backward "\s\t")
+                   (looking-back
+                    "Argument \\(\\(['`]?\\)\\(\\(?:\\sw\\|\\s_\\|\\\\.\\)+\\)\\([`']?\\)\\)[\s\t]+is the[\s]\\{1\\}"
+                    0))
+                 (downcase-region beg end)
+               (unless (gpt-doc-upcased-p full)
+                 (upcase-region beg end)))))
+         (buffer-string)))
     response))
 
 (defun gpt-doc--unqote-response-args (response)
@@ -429,13 +494,94 @@ Argument RESPONSE is the input string to be modified."
     (insert response)
     (goto-char (point-min))
     (while (re-search-forward
-            "\\(\\(`\\)\\(\\(?:\\sw\\|\\s_\\|\\\\.\\)+\\)\\(`\\)\\)" nil t 1)
+            "\\(\\(['`]\\)\\(\\(?:\\sw\\|\\s_\\|\\\\.\\)+\\)\\([`']\\)\\)" nil t
+            1)
       (let ((full (match-string-no-properties 1))
             (symb (match-string-no-properties 3)))
         (if (gpt-doc-upcased-p full)
             (replace-match symb)
           (replace-match (concat "`" symb "'")))))
     (buffer-string)))
+
+
+(defun gpt-doc-uniq-sentences (text)
+  "Return a list of unique sentences from the given TEXT.
+Argument TEXT is the input TEXT from which sentences are extracted."
+  (let ((sentences (split-string
+                    text
+                    "\\.\\([^a-z-0-9]\\|$\\)" t)))
+    (seq-uniq (mapcar
+               (lambda (it)
+                 (format "%s."
+                         (string-trim
+                          (replace-regexp-in-string "[\n]+" "\s" it))))
+               sentences))))
+
+
+
+(defun gpt-doc-shorten-text (text)
+  "Shorten TEXT by removing the leading \"a macro/function/variable that\" phrase.
+Argument TEXT is the input TEXT."
+  (replace-regexp-in-string
+   (rx (seq "\"^"
+            (one-or-more
+             (any "a-z"))
+            (any "\\s")
+            "a"
+            (any "\\s")
+            "\\(macro\\|function\\|variable\\)"
+            (one-or-more
+             (any "\\st"))
+            "\\(\\(\\("
+            (opt (any "'`"))
+            "\\)\\(\\"
+            (opt "(")
+            ":\\sw\\|\\s_\\|\\\\" nonl "\\"
+            (one-or-more ")")
+            "\\)\\("
+            (opt (any "'`"))
+            "\\)\\)"
+            (any "\\st")
+            "\\"
+            (opt ")")
+            "that"
+            (one-or-more
+             (any "\\s"))
+            "\""))
+   "" text))
+
+(defun gpt-doc-ensure-first-sentence (text)
+  "Ensure the first sentence of the given TEXT is capitalized."
+  (let ((new-text (gpt-doc-shorten-text text)))
+    (if (not (= (length text)
+                (length new-text)))
+        (with-temp-buffer
+          (insert new-text)
+          (goto-char (point-min))
+          (capitalize-word 1)
+          (when-let ((c (char-before (point))))
+            (when (= c 115)
+              (delete-char -1)))
+          (buffer-string))
+      text)))
+
+(defun gpt-doc-fill-docs (text)
+  "Fill the TEXT with formatted sentences, each ending with a period.
+Argument TEXT is a string containing the text to be formatted."
+  (let ((sentences (split-string text
+                                 "\\.\\([\s\t\n\r\f]\\|$\\)" t)))
+    (mapconcat
+     (lambda (l)
+       (setq l (format "%s." l))
+       (if (> (length l) 80)
+           (with-temp-buffer
+             (insert l)
+             (fill-region-as-paragraph (point-min)
+                                       (point))
+             (buffer-string))
+         l))
+     sentences
+     "\n")))
 
 (defun gpt-doc--normalize-gpt-response (sexp response)
   "Return a normalized RESPONSE by removing code blocks and trimming whitespace.
@@ -444,24 +590,24 @@ Argument RESPONSE is the GPT RESPONSE string."
   (when-let ((code (string-match "```emacs-lisp[\s\t\n]"
                                  response)))
     (setq response (substring-no-properties response 0 code)))
-  (string-trim
-   (replace-regexp-in-string
-    "[\n][\n]+" "\n"
+  (let ((sentences (gpt-doc-uniq-sentences response)))
+    (when-let ((first-sentence (gpt-doc-ensure-first-sentence
+                                (car sentences))))
+      (setcar sentences first-sentence))
+    (setq sentences (mapcar (apply-partially #'gpt-doc--upcase-args sexp)
+                            sentences))
+    (setq sentences (mapcar #'gpt-doc--unqote-response-args sentences))
     (mapconcat
      (lambda (l)
-       (concat (if (> (length l) 80)
-                   (with-temp-buffer
-                     (insert l)
-                     (fill-region-as-paragraph (point-min)
-                                               (point))
-                     (buffer-string))
-                 l)
-               "."))
-     (split-string
-      (gpt-doc--unqote-response-args
-       (gpt-doc--upcase-args sexp response))
-      "\\.\\([\s]?+\\)" t)
-     "\n"))))
+       (if (> (length l) 80)
+           (with-temp-buffer
+             (insert l)
+             (fill-region-as-paragraph (point-min)
+                                       (point))
+             (buffer-string))
+         l))
+     sentences
+     "\n")))
 
 
 (defun gpt-doc-forward-sexp (count)
@@ -537,6 +683,85 @@ Argument SEXP is the s-expression to be formatted."
              (replace-match "()"))
            (buffer-string))))))
 
+
+
+(defun gpt-doc-document-arguments (sexp)
+  "Describe arguments in a function or macro SEXP."
+  (when-let ((args
+              (pcase (car sexp)
+                ((or 'defvar 'defvar-local 'defcustom)
+                 nil)
+                (_
+                 (mapcar #'symbol-name
+                         (gpt-doc-get-args sexp))))))
+    (let* ((args-directives
+            (string-join
+             (append
+              '("Please follow these step-by-step instructions."
+                "Step 1: The user will provide you with an Emacs Lisp function/macro enclosed in triple quotes.")
+              (seq-map-indexed
+               (lambda (arg i)
+                 (format
+                  "Step %d: Describe argument %s in one sentence that starts with  \"Argument %s is \""
+                  (+ i 2)
+                  arg
+                  (upcase
+                   arg)))
+               args))
+             "\n"))
+           (args-response
+            (when args-directives
+              (gpt-doc-response-text
+               (gpt-doc-gpt-request
+                (format
+                 "```emacs-lisp\n%s\n```\n"
+                 (gpt-doc-pp-sexp sexp))
+                args-directives)))))
+      (gpt-doc-fill-docs
+       (gpt-doc--unqote-response-args
+        (gpt-doc--upcase-args sexp args-response))))))
+
+(defun gpt-doc-get-short-documentation (sexp)
+  "Get the short documentation for an Emacs Lisp function or variable.
+Argument SEXP is the function or variable definition."
+  (let* ((code (gpt-doc-pp-sexp sexp))
+         (prompt
+          (pcase (car sexp)
+            ((or 'defvar 'defvar-local 'defcustom)
+             "Please follow these step-by-step instructions:
+
+Step 1: The user will provide you with an Emacs Lisp variable definition enclosed in triple quotes.
+
+Step 2: Describe this variable in one sentence. Use imperative verbs only and avoid third-party phrasing, with a maximum of 78 characters.")
+            (_
+             "Write a very short sentence that starts with imperative verb about what the function below does in maximum *70* characters.")))
+         (text (gpt-doc-response-text
+                (gpt-doc-gpt-request
+                 (format
+                  "```emacs-lisp\n%s\n```\n"
+                  code)
+                 prompt)))
+         (normalized (gpt-doc--unqote-response-args
+                      (gpt-doc--upcase-args sexp text)))
+         (parts (split-string normalized nil t))
+         (first-word (pop parts)))
+    (when-let
+        ((imp (and first-word
+                   (boundp 'checkdoc-common-verbs-wrong-voice)
+                   (cdr (assoc-string (downcase first-word)
+                                      checkdoc-common-verbs-wrong-voice)))))
+      (setq first-word (capitalize (seq-copy imp))))
+    (concat first-word " " (string-join parts " "))))
+
+(defun gpt-doc-document-sexp (sexp)
+  "Join the first sentence and argument documentation of a SEXP.
+Argument SEXP is the sexp (S-expression) that will be documented."
+  (let* ((first-sentence (gpt-doc-get-short-documentation sexp))
+         (args-docs (gpt-doc-document-arguments sexp)))
+    (gpt-doc-quote-args
+     (string-join (delq nil (list first-sentence args-docs))
+                  "\n\n"))))
+
 ;;;###autoload
 (defun gpt-doc-document-current-function ()
   "Document current Elisp definition using the GPT-3 API.
@@ -562,28 +787,8 @@ The generated documentation is formatted to fit within an 80-column screen."
                (when-let ((sexp (sexp-at-point)))
                  (memq (car-safe sexp)
                        types))))
-       (code (if sexp
-                 (gpt-doc-pp-sexp sexp)
-               (read-string "Code: ")))
-       (response (gpt-doc-gpt-request
-                  (format
-                   "```emacs-lisp\n%s\n```\n"
-                   code)
-                  (pcase (car sexp)
-                    ((or 'defvar 'defvar-local 'defcustom)
-                     gpt-doc-variable-prompt)
-                    ((guard (gpt-doc-get-args sexp))
-                     gpt-doc-with-args-directive)
-                    (_ gpt-doc-no-args-directive))))
        (text
-        (cdr
-         (assoc 'content
-                (cdr
-                 (assoc 'message (elt (cdr (assoc 'choices
-                                                  response))
-                                      0)))))))
-    (setq text (gpt-doc--normalize-gpt-response
-                sexp text))
+        (gpt-doc-document-sexp sexp)))
     (with-current-buffer buff
       (if buffer-read-only
           (message "%s"
