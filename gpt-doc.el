@@ -330,7 +330,7 @@ Argument SYSTEM-PROMPT is the prompt for the system role."
           `(("Content-Type" . "application/json")
             ("Authorization" . ,(format "Bearer %s"
                                         (gpt-doc-get-api-key)))))
-         (data `((model . "gpt-3.5-turbo")
+         (data `((model . ,gpt-doc-gpt-model)
                  (messages .
                            ,(apply #'vector
                                    `(((role . "system")
@@ -416,9 +416,12 @@ Argument SEXP is the function/macro definition SEXP."
             nil
           (seq-remove
            (lambda (it)
-             (string-prefix-p "&"
-                              (symbol-name it)))
-           elems))))))
+             (let ((name (symbol-name it)))
+               (or (string-prefix-p "&"
+                                    name)
+                   (string-prefix-p "_"
+                                    name))))
+           (nreverse elems)))))))
 
 (defun gpt-doc--downcase-repeat-args (response)
   "Downcase repeat args.
@@ -565,6 +568,13 @@ Argument TEXT is the input TEXT."
           (buffer-string))
       text)))
 
+(defun gpt-doc-trim-steps (text)
+  "Remove \"Step [0-9]+: Argument\" from the given TEXT.
+
+Argument TEXT is the string input that the function will process to remove
+specific patterns."
+  (replace-regexp-in-string "\\(Step [0-9]+: \\)Argument " "" text nil nil 1))
+
 (defun gpt-doc-fill-docs (text)
   "Fill the TEXT with formatted sentences, each ending with a period.
 Argument TEXT is a string containing the text to be formatted."
@@ -702,7 +712,7 @@ Argument SEXP is the s-expression to be formatted."
               (seq-map-indexed
                (lambda (arg i)
                  (format
-                  "Step %d: Describe argument %s in one sentence that starts with  \"Argument %s is \""
+                  "Step %d: Describe argument %s in one sentence that starts with \"Argument %s is \"."
                   (+ i 2)
                   arg
                   (upcase
@@ -718,8 +728,9 @@ Argument SEXP is the s-expression to be formatted."
                  (gpt-doc-pp-sexp sexp))
                 args-directives)))))
       (gpt-doc-fill-docs
-       (gpt-doc--unqote-response-args
-        (gpt-doc--upcase-args sexp args-response))))))
+       (gpt-doc-trim-steps
+        (gpt-doc--unqote-response-args
+         (gpt-doc--upcase-args sexp args-response)))))))
 
 (defun gpt-doc-get-short-documentation (sexp)
   "Get the short documentation for an Emacs Lisp function or variable.
@@ -734,7 +745,7 @@ Step 1: The user will provide you with an Emacs Lisp variable definition enclose
 
 Step 2: Describe this variable in one sentence. Use imperative verbs only and avoid third-party phrasing, with a maximum of 78 characters.")
             (_
-             "Write a very short sentence that starts with imperative verb about what the function below does in maximum *70* characters.")))
+             "Write a very short sentence that starts with imperative verb about what the function below does in maximum *70* characters. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\" and so on.")))
          (text (gpt-doc-response-text
                 (gpt-doc-gpt-request
                  (format
@@ -742,7 +753,12 @@ Step 2: Describe this variable in one sentence. Use imperative verbs only and av
                   code)
                  prompt)))
          (normalized (gpt-doc--unqote-response-args
-                      (gpt-doc--upcase-args sexp text)))
+                      (gpt-doc--upcase-args sexp
+                                            (if
+                                                (and (string-prefix-p "\"" text)
+                                                     (string-suffix-p "\"" text))
+                                                (read text)
+                                              text))))
          (parts (split-string normalized nil t))
          (first-word (pop parts)))
     (when-let
