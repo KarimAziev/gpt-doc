@@ -2,7 +2,7 @@
 
 * About
 
-=gpt-doc= is an Emacs library that allows you to document Elisp code using the GPT-3 API. It provides functions to send code snippets to an external service and retrieve generated documentation, which is then automatically inserted into the correct place.
+=gpt-doc= is an Emacs library that allows you to document Elisp code using the GPT API. It provides functions to send code snippets to an external service and retrieve generated documentation, which is then automatically inserted into the correct place.
 
 
 [[./gpt-doc-demo.gif][./gpt-doc-demo.gif]]
@@ -95,23 +95,46 @@ And assign ~gpt-doc-api-key-from-auth-source~ to ~gpt-doc-api-key~:
 
 Run ~M-x gpt-doc-document-current-function~ inside or at the start of the variable/function/macro definition.
 
-The generated documentation will be formatted and inserting automatically according to Emacs Emacs' style requirements. The generated documentation is formatted to fit within an 80-column screen.
+By default, this function sends only the current thing, but with a prefix argument, you can also send related definitions to provide more context.
+
+When the prefix argument is 1 (default), no related definitions are included.
+When the prefix argument is 4, shallow-related definitions are included.
+When the prefix argument is 16, all related definitions are included.
+
+The generated documentation will be formatted and inserted automatically according to Emacs' style requirements. The documentation is also formatted to fit within an 80-column screen.
 
 * Customization
+**** ~gpt-doc-gpt-model~
+You can set the OpenAI API model with =gpt-doc-gpt-model=. The default model is =gpt-3.5-turbo=, but the results are significantly better with =gpt-4=.
 
-*** ~gpt-doc-api-key~
-An OpenAI API key. It can be a string or a function that returns the API key.
-*** ~gpt-doc-gpt-url~
-The URL queried by GPT. The default URL is https://api.openai.com/v1/chat/completions.
-*** ~gpt-doc-no-args-directive~
-System prompt for ChatGPT to document Elisp functions without arguments.
-*** ~gpt-doc-with-args-directive~
-System prompt for ChatGPT to document Elisp functions with arguments.
-*** ~gpt-doc-variable-prompt~
-System prompt for ChatGPT to document Elisp variables.
-*** ~gpt-doc-gpt-model~
-API Model for OpenAI. The default model is ~gpt-3.5-turbo~.
-*** ~gpt-doc-gpt-temperature~
-The "temperature" of the GPT response, controlling the randomness. The value should be between 0.0 and 2.0, with 2.0 being the most random.
-*** ~gpt-doc-docstring-positions~
-An alist that maps definition types to their respective documentation positions. It is used for finding where to insert generated documentation.
+#+begin_src elisp
+(setq gpt-doc-gpt-model "gpt-4")
+#+end_src
+**** ~gpt-doc-gpt-url~
+
+You can specify the OpenAI API endpoint with =gpt-doc-gpt-url=. The default endpoint is "https://api.openai.com/v1/chat/completions".
+
+#+begin_src elisp
+(setq gpt-doc-gpt-url "https://api.openai.com/v1/chat/completions")
+#+end_src
+**** ~gpt-doc-gpt-temperature~
+You can customize the randomness of GPT-3's responses by setting =gpt-doc-gpt-temperature=. Lower values make the responses more deterministic, and higher values make them more random. The default value is 0.1.
+#+begin_src elisp
+(setq gpt-doc-gpt-temperature 0.1)
+#+end_src
+**** ~gpt-doc-api-key~
+An OpenAI =api= key (string). Can also be a function of no arguments that returns an =api= key (more secure).
+Temperature
+**** ~gpt-doc-first-sentence-doc-prompt~
+System prompt to generate first sentence of function documentation.
+**** ~gpt-doc-args-prompt~
+System prompt for ChatGPT to document Elisp arguments.
+**** ~gpt-doc-variable-prompt~
+System prompt (directive) for ChatGPT to document Elisp variables.
+**** ~gpt-doc-docstring-positions~
+An alist that maps definition types to their respective documentation positions. If the value of cell is a number, move forward across n balanced expressions. If the value is a function, it will be called with definition sexp and should return number to move forward across.
+**** ~gpt-doc-prompt-types~
+An alist that maps definition types to their respective documentation labels
+**** ~gpt-doc-gebug~
+Whether to enable debugging in the =gpt= documentation group.
+
