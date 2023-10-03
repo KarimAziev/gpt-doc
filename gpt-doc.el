@@ -353,8 +353,8 @@ Argument SYSTEM-PROMPT is the prompt for the system role."
                     (with-current-buffer buffer
                       (buffer-substring-no-properties
                        url-http-end-of-headers (point-max))))))
-    (message "gpt-doc: response %s"
-             response)
+    (gpt-doc-debug-log "gpt-doc: response %s"
+                       response)
     (if (not buffer)
         (error "Failed to send request to OpenAI API")
       (condition-case gpt-err
