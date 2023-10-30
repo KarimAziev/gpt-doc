@@ -104,7 +104,7 @@ of the response, with 2.0 being the most random."
   :group 'gpt-doc
   :type 'string)
 
-(defcustom gpt-doc-args-prompt "The user will provide you an Emacs Lisp code. Provide a sentence for every argument of %s that starts either withf \"Argument \" or  \"Optional argument \", and includes argument description such as type, default value without any additional text, prompt or note."
+(defcustom gpt-doc-args-prompt "The user will provide you an Emacs Lisp code. Provide a sentence for every argument of %s that starts either with \"Argument \",  \"Optional argument \" or \"Arguments \" description such as type, default value without any additional text, prompt or note."
   "System prompt for ChatGPT to document Elisp arguments."
   :group 'gpt-doc
   :type 'string)
