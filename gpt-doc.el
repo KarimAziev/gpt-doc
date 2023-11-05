@@ -403,9 +403,6 @@ If `gpt-doc-api-key' is not set, raise an error."
 Argument GPT-PROMPT is the prompt for the GPT model.
 Argument SYSTEM-PROMPT is the prompt for the system role."
   (require 'url)
-  (gpt-doc-debug-log "gpt-doc:system-prompt:\n%s\nuser-prompt:\n%s\n"
-                     system-prompt
-                     gpt-prompt)
   (let* ((url-request-method "POST")
          (url-request-extra-headers
           `(("Content-Type" . "application/json")
@@ -447,7 +444,7 @@ Argument SYSTEM-PROMPT is the prompt for the system role."
                (error-message-string gpt-err))))))
 
 (defun gpt-doc-response-text (response)
-  "Return the RESPONSE text from a GPT-3 API RESPONSE.
+  "Return the RESPONSE text from a GPT-3 API response.
 Argument RESPONSE is the alist."
   (cdr
    (assq 'content
@@ -473,7 +470,7 @@ Argument ELEM is the element to be checked."
 
 (defun gpt-doc-extract-sym (sexp arg)
   "Return the symbol extracted from the given SEXP and argument.
-Argument SEXP is the SEXP from which the symbol is extracted.
+Argument SEXP is the s-expression from which the symbol is extracted.
 Argument ARG is the argument used to extract the symbol from the SEXP."
   (let ((sym
          (pcase (car sexp)
@@ -486,7 +483,7 @@ Argument ARG is the argument used to extract the symbol from the SEXP."
 
 (defun gpt-doc-get-args (sexp)
   "Return a list of arguments extracted from a function/macro definition.
-Argument SEXP is the function/macro definition SEXP."
+Argument SEXP is the function/macro definition sexp."
   (when (and (proper-list-p sexp)
              (assq (car-safe sexp)
                    gpt-doc-docstring-positions))
@@ -640,14 +637,14 @@ Argument COUNT is the number of balanced sexps to move forward."
 
 (defun gpt-doc-first-list-pos (sexp)
   "Return position of the first proper list in the given SEXP.
-Argument SEXP is the SEXP to search for proper lists."
+Argument SEXP is the s-expression to search for proper lists."
   (and (proper-list-p sexp)
        (seq-position sexp nil (lambda (a &rest _)
                                 (proper-list-p a)))))
 
 (defun gpt-doc-first-doc-pos (sexp)
   "Return the position of documentation string after args lists in the given SEXP.
-Argument SEXP is the SEXP to search for the documentation string."
+Argument SEXP is the s-expression to search for the documentation string."
   (when-let* ((arg-pos (gpt-doc-first-list-pos sexp))
               (doc (nth (1+ arg-pos) sexp)))
     (and (stringp doc)
@@ -699,15 +696,12 @@ Argument SEXP is the s-expression to be formatted."
            (buffer-string))))))
 
 
+(defun gpt-doc-get-prompt-for-args (sexp &optional related-sexps)
+  "Generate user and system prompt for arguments of a given SEXP.
 
-(defun gpt-doc-document-arguments (sexp &optional related-sexps)
-  "Generate documentation for each argument of a given Emacs Lisp function.
+Argument SEXP is a list representing a Lisp expression.
 
-Argument SEXP is a list that represents a symbolic expression.
-
-Optional argument RELATED-SEXPS is a list of symbolic expressions that are
-related to SEXP.
-It is not required and has no default value."
+Optional argument RELATED-SEXPS is a list of Lisp expressions related to SEXP."
   (when-let ((args
               (pcase (car sexp)
                 ((or 'defvar 'defvar-local 'defcustom 'define-minor-mode
@@ -720,26 +714,64 @@ It is not required and has no default value."
                           (or (cdr (assq (car sexp) gpt-doc-prompt-types))
                               "definition")
                           (nth 1 sexp)))
-           (args-directives
+           (system-prompt
             (apply #'format gpt-doc-args-prompt
                    (seq-take (list label (car sexp))
                              (length
                               (gpt-doc-get-matches "%s"
                                                    gpt-doc-args-prompt)))))
-           (text
-            (when args-directives
-              (gpt-doc-response-text
-               (gpt-doc-gpt-request
-                (format
-                 "```emacs-lisp\n%s\n\n%s\n```\n"
-                 (gpt-doc-pp-sexp sexp)
-                 sexp-str)
-                args-directives)))))
-      (when text
-        (gpt-doc-fill-docs
-         (gpt-doc-trim-steps
-          (gpt-doc--unqote-response-args
-           (gpt-doc--upcase-args sexp (gpt-doc-maybe-read text)))))))))
+           (user-prompt (format
+                         "```elisp\n%s\n\n%s\n```\n"
+                         (gpt-doc-pp-sexp sexp)
+                         sexp-str)))
+      (gpt-doc-debug-log "user-prompt for arguments:\n```\n%s\n```\n"
+                         user-prompt)
+      (gpt-doc-debug-log "system-prompt for arguments:\n```\n%s\n```\n"
+                         system-prompt)
+      (cons user-prompt system-prompt))))
+
+(defun gpt-doc-document-arguments (sexp &optional related-sexps)
+  "Generate documentation for each argument of a given Emacs Lisp function.
+
+Argument SEXP is a list that represents a symbolic expression.
+
+Optional argument RELATED-SEXPS is a list of symbolic expressions that are
+related to SEXP.
+It is not required and has no default value."
+  (pcase-let*
+      ((`(,user-prompt . ,system-prompt)
+        (gpt-doc-get-prompt-for-args sexp
+                                     related-sexps))
+       (text
+        (when system-prompt
+          (gpt-doc-response-text
+           (gpt-doc-gpt-request
+            user-prompt
+            system-prompt)))))
+    (gpt-doc-debug-log
+     "gpt-doc-document-arguments raw response text:\n```\n%s\n```\n" text)
+    (when text
+      (gpt-doc-pipe-ignore-errors
+       `(gpt-doc-maybe-read
+         ,(apply-partially #'gpt-doc--upcase-args sexp)
+         gpt-doc--unqote-response-args
+         gpt-doc-trim-steps
+         gpt-doc-fill-docs)
+       text))))
+
+(defun gpt-doc-pipe-ignore-errors (fns text)
+  "Apply a list of functions to a TEXT, ignoring any errors that occur.
+
+Argument FNS is a list of functions.
+Argument TEXT is a string."
+  (let ((fn (pop fns)))
+    (seq-reduce (lambda (acc fn)
+                  (setq acc (or (ignore-errors
+                                  (funcall fn acc))
+                                acc)))
+                fns
+                (or (ignore-errors (funcall fn text))
+                    text))))
 
 
 
@@ -751,19 +783,24 @@ mark."
   (if
       (and (string-prefix-p "\"" text)
            (string-suffix-p "\"" text))
-      (read text)
+      (or (ignore-errors (read text))
+          (substring-no-properties text 1 (1- (length text)))
+          text)
     text))
+
 (defun gpt-doc-normalize-response-content (text &optional sexp)
   "Normalize and unquote the response content from a GPT request.
 
-Argument TEXT is a string that represents the TEXT to be normalized.
+Argument TEXT is a string that represents the text to be normalized.
 
 Optional argument SEXP is a boolean value that, if provided, indicates whether
-the TEXT should be treated as a symbolic expression (SEXP).
+the TEXT should be treated as a symbolic expression (sexp).
 The default value is nil."
-  (gpt-doc--unqote-response-args
-   (gpt-doc--upcase-args sexp
-                         (gpt-doc-maybe-read text))))
+  (gpt-doc-pipe-ignore-errors
+   `(gpt-doc-maybe-read
+     ,(apply-partially #'gpt-doc--upcase-args sexp)
+     gpt-doc--unqote-response-args)
+   text))
 
 (defun gpt-doc-get-matches (re str)
   "Search backwards for matches of a regular expression in a string.
@@ -779,25 +816,24 @@ Argument STR is a string where the function will perform the search operation."
         (push (match-string-no-properties 0) res))
       res)))
 
-(defun gpt-doc-get-short-documentation (sexp &optional related-sexps)
-  "Generate a short documentation for a given Emacs Lisp function or macro.
+(defun gpt-doc-get-prompt-for-summary (sexp &optional related-sexps)
+  "Generate user and system prompt messages for summarizing a given SEXP.
 
-Argument SEXP is a symbolic expression (sexp) in Emacs Lisp that the function
-will generate documentation for.
+Argument SEXP is a symbolic expression (sexp) in Emacs Lisp.
 
-Argument RELATED-SEXPS is an optional argument that contains related definitions
-that will be joined with the main sexp for documentation generation."
+Optional argument RELATED-SEXPS is a list of related symbolic expressions
+\(sexps) in Emacs Lisp."
   (let* ((code (gpt-doc-pp-sexp sexp))
          (name (nth 1 sexp))
-         (label (format "%s `%s'"
+         (label (format "the %s `%s'"
                         (or (cdr (assq (car sexp) gpt-doc-prompt-types))
                             "definition")
                         name))
          (sexp-str (gpt-doc-join-sexps related-sexps))
-         (full-code (format
-                     "```emacs-lisp\n%s\n\n%s\n```\n"
-                     code sexp-str))
-         (prompt
+         (user-prompt (format
+                       "```elisp\n%s\n\n%s\n```\n"
+                       code sexp-str))
+         (system-prompt
           (pcase (car sexp)
             ((or 'defvar 'defvar-local 'defcustom)
              (apply #'format gpt-doc-variable-prompt
@@ -808,17 +844,34 @@ that will be joined with the main sexp for documentation generation."
              (apply #'format gpt-doc-first-sentence-doc-prompt
                     (seq-take (list label name)
                               (length
-                               (gpt-doc-get-matches "%s"
-                                                    gpt-doc-first-sentence-doc-prompt)))))))
-         (text
-          (gpt-doc-response-text (gpt-doc-gpt-request
-                                  full-code
-                                  prompt)))
-         (normalized (gpt-doc-normalize-response-content
-                      text
-                      sexp))
-         (parts (split-string normalized nil t))
-         (first-word (pop parts)))
+                               (gpt-doc-get-matches
+                                "%s"
+                                gpt-doc-first-sentence-doc-prompt))))))))
+    (gpt-doc-debug-log "user-prompt for summary\n```\n%s\n```" user-prompt)
+    (gpt-doc-debug-log "system-prompt for summary:\n\n%s\n" system-prompt)
+    (cons user-prompt system-prompt)))
+
+
+
+(defun gpt-doc-get-short-documentation (sexp &optional related-sexps)
+  "Generate a short documentation for a given Emacs Lisp function or macro.
+
+Argument SEXP is a symbolic expression (sexp) in Emacs Lisp that the function
+will generate documentation for.
+
+Argument RELATED-SEXPS is an optional argument that contains related definitions
+that will be joined with the main SEXP for documentation generation."
+  (pcase-let* ((`(,user-prompt . ,system-prompt)
+                (gpt-doc-get-prompt-for-summary sexp related-sexps))
+               (text
+                (gpt-doc-response-text (gpt-doc-gpt-request
+                                        user-prompt
+                                        system-prompt)))
+               (normalized (gpt-doc-normalize-response-content
+                            text
+                            sexp))
+               (parts (split-string normalized nil t))
+               (first-word (pop parts)))
     (when-let
         ((imp (and first-word
                    (boundp 'checkdoc-common-verbs-wrong-voice)
@@ -906,7 +959,7 @@ SEXP is an Emacs Lisp expression."
 (defun gpt-doc-looks-like-keymapp (sexp)
   "Check if a given s-expression SEXP resembles a keymap definition.
 
-Argument SEXP is a symbolic expression (SEXP) that is being checked if it looks
+Argument SEXP is a symbolic expression (sexp) that is being checked if it looks
 like a keymap."
   (pcase sexp
     (`(defvar ,(and (pred symbolp) _name)
@@ -943,7 +996,7 @@ like a keymap."
 (defun gpt-doc-get-related-defs (sexp)
   "Extract related definitions from a given `S-expression'.
 
-Argument SEXP is a symbolic expression (SEXP) in Emacs Lisp."
+Argument SEXP is a symbolic expression (sexp) in Emacs Lisp."
   (pcase-let*
       ((package-name (progn
                        (require 'lisp-mnt)
