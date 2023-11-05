@@ -1,0 +1,7 @@
+* v0.2.0    2023-11-05
+- Add a new customization variable =gpt-doc-use-stream= to detect if =curl= exists and decide whether to use curl for streaming or not.
+- Add the =gpt-doc= command that generates and inserts documentation for a function definition at the point according to the =gpt-doc-use-stream= setting.
+- Add the command =gpt-doc-stream= to stream the response even if =gpt-doc-use-stream= is set to nil.
+
+* v0.1.0    UNRELEASED
+
