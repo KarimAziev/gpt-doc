@@ -41,7 +41,7 @@ To use =gpt-doc.el=, make sure you have Emacs version 27.1 or later installed.
              :repo "KarimAziev/gpt-doc"
              :type git
              :host github)
-  :commands (gpt-doc-document-current-function))
+  :commands (gpt-doc))
 #+end_src
 
 ** Manual installation
@@ -93,9 +93,13 @@ And assign ~gpt-doc-api-key-from-auth-source~ to ~gpt-doc-api-key~:
 
 * Usage
 
-Run ~M-x gpt-doc-document-current-function~ inside or at the start of the variable/function/macro definition.
+Run ~M-x gpt-doc~ to document variable/function/macro definition at point by streaming response, if =gpt-doc-use-stream= is non-nil, othervise synchronously.
 
-By default, this function sends only the current thing, but with a prefix argument, you can also send related definitions to provide more context.
+Run ~M-x gpt-doc-stream~ (requires curl) to document variable/function/macro definition at point by streaming response.
+
+Run ~M-x gpt-doc-document-current-function~ to document variable/function/macro definition at point synchronously.
+
+By default, these commands sends only the current thing, but with a prefix argument, you can also send related definitions to provide more context.
 
 When the prefix argument is 1 (default), no related definitions are included.
 When the prefix argument is 4, shallow-related definitions are included.
@@ -125,6 +129,9 @@ You can customize the randomness of GPT-3's responses by setting =gpt-doc-gpt-te
 **** ~gpt-doc-api-key~
 An OpenAI =api= key (string). Can also be a function of no arguments that returns an =api= key (more secure).
 Temperature
+
+**** ~gpt-doc-use-stream~
+Whether to use curl for streaming.
 **** ~gpt-doc-first-sentence-doc-prompt~
 System prompt to generate first sentence of function documentation.
 **** ~gpt-doc-args-prompt~
@@ -135,6 +142,3 @@ System prompt (directive) for ChatGPT to document Elisp variables.
 An alist that maps definition types to their respective documentation positions. If the value of cell is a number, move forward across n balanced expressions. If the value is a function, it will be called with definition sexp and should return number to move forward across.
 **** ~gpt-doc-prompt-types~
 An alist that maps definition types to their respective documentation labels
-**** ~gpt-doc-gebug~
-Whether to enable debugging in the =gpt= documentation group.
-
