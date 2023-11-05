@@ -78,6 +78,12 @@ of the response, with 2.0 being the most random."
   :group 'gpt-doc
   :type 'number)
 
+(defcustom gpt-doc-use-stream (and (executable-find "curl")
+                                   t)
+  "Whether to use curl for streaming."
+  :group 'gpt-doc
+  :type 'boolean)
+
 (defcustom gpt-doc-gpt-model "gpt-3.5-turbo"
   "A string variable representing the API model for OpenAI."
   :group 'gpt-doc
@@ -538,41 +544,135 @@ Argument SEXP is a symbolic expression in Emacs Lisp."
   (mapcar #'symbol-name
           (gpt-doc-get-args sexp)))
 
-(defun gpt-doc-upcase-regex (regex response)
-  "Convert matched REGEX patterns in a RESPONSE string to uppercase.
+(defun gpt-doc-upcase-arg-list (doc-str args)
+  "Convert occurrences of arguments ARGS in a string DOC-STR to uppercase.
 
-Argument REGEX is a string that represents the regular expression to be used for
-searching within the RESPONSE.
-Argument RESPONSE is a string that contains the text in which the regular
-expression search will be performed."
-  (with-temp-buffer
-    (insert response)
-    (goto-char (point-min))
-    (while (re-search-forward regex nil t 1)
-      (let ((beg (match-beginning 0))
-            (end (match-end 0)))
-        (upcase-region beg end)
-        (while (looking-at "[`']")
-          (delete-char 1))
-        (save-excursion
-          (goto-char beg)
-          (while (looking-back "[`']" 0)
-            (delete-char -1)))))
-    (buffer-string)))
+Argument DOC-STR is a string that represents the documentation string to be
+processed.
+Argument ARGS is a list of arguments that will be used in the regular
+expression."
+  (let ((regex (regexp-opt (mapcar (lambda (a)
+                                     (if (symbolp a)
+                                         (symbol-name a)
+                                       a))
+                                   args)
+                           'symbols)))
+    (with-temp-buffer
+      (insert doc-str)
+      (goto-char (point-min))
+      (while (re-search-forward regex nil t 1)
+        (let ((beg (match-beginning 0))
+              (end (match-end 0)))
+          (if
+              (looking-back "\\(\\_<.+\\_>\\)\\([^.]+\\)\\_<\\(\\(\\1\\)\\)\\_>"
+                            0)
+              (downcase-region beg end)
+            (upcase-region beg end))
+          (while (looking-at "[`']")
+            (delete-char 1))
+          (save-excursion
+            (goto-char beg)
+            (while (looking-back "[`']" 0)
+              (delete-char -1)))))
+      (buffer-string))))
 
 
-(defun gpt-doc--upcase-args (sexp response)
-  "Return the RESPONSE with all arguments upcased.
-Argument SEXP is the SEXP to extract argument names from.
-Argument RESPONSE is the RESPONSE string to upcase arguments in."
-  (if-let* ((args-names (mapcar #'symbol-name
-                                (gpt-doc-get-args sexp)))
-            (regex
-             (and args-names
-                  (regexp-opt args-names
-                              'symbols))))
-      (gpt-doc-upcase-regex regex response)
-    response))
+
+(defun gpt-doc--upcase-args (sexp str)
+  "Return the STR with all arguments of SEXP upcased.
+
+Argument SEXP is the s-expression to extract argument names from.
+
+Argument STR is the string to upcase arguments in."
+  (if-let ((args-names (mapcar #'symbol-name
+                               (gpt-doc-get-args sexp))))
+      (gpt-doc-upcase-arg-list str args-names)
+    str))
+
+(defun gpt-doc-fix-arg-case ()
+  "Convert argument names to uppercase in the current documentation string."
+  (pcase-let* ((`(,_type ,_name ,_str ,beg ,end)
+                (gpt-doc-get-current-doc-info))
+               (`(,sexp . ,_doc-pos)
+                (gpt-doc-get-sexp-with-doc-pos))
+               (args-names (mapcar #'symbol-name
+                                   (gpt-doc-get-args sexp)))
+               (regex
+                (when args-names
+                  (concat (regexp-opt args-names
+                                      'symbols)
+                          "\\(\\([^\n]+\\)\\_<\\(\\(\\1\\)\\)\\_>\\)?"))))
+    (when regex
+      (save-excursion
+        (goto-char (1+ beg))
+        (save-match-data
+          (while (re-search-forward
+                  regex (1- end) t 1)
+            (let ((mbeg (match-beginning 1))
+                  (mend (match-end 1))
+                  (mbeg-dub (match-beginning 4))
+                  (mend-dub (match-end 4)))
+              (upcase-region mbeg mend)
+              (when (and mbeg-dub mend-dub)
+                (downcase-region mbeg-dub mend-dub)))))))))
+
+(defun gpt-doc--fix-args (sexp)
+  "Convert argument names to uppercase and their duplicates to lowercase.
+
+Argument SEXP is the symbolic expression to be processed."
+  (pcase-let* ((args-names (mapcar #'symbol-name
+                                   (gpt-doc-get-args sexp)))
+               (regex
+                (when args-names
+                  (concat (regexp-opt args-names
+                                      'symbols)
+                          "\\(\\([^\n]+\\)\\_<\\(\\(\\1\\)\\)\\_>\\)?"))))
+    (while (re-search-forward
+            regex nil t 1)
+      (let ((mbeg (match-beginning 1))
+            (mend (match-end 1))
+            (mbeg-dub (match-beginning 4))
+            (mend-dub (match-end 4)))
+        (upcase-region mbeg mend)
+        (when (and mbeg-dub mend-dub)
+          (downcase-region mbeg-dub mend-dub))))))
+
+(defun gpt-doc-post-fix ()
+  "Convert argument names to uppercase in the current documentation string."
+  (interactive)
+  (pcase-let* ((`(,_type ,_name ,str ,beg ,end)
+                (gpt-doc-get-current-doc-info))
+               (`(,sexp . ,doc-pos)
+                (gpt-doc-get-sexp-with-doc-pos)))
+    (when (and str doc-pos beg end)
+      (save-excursion
+        (goto-char (1+ beg))
+        (save-restriction
+          (narrow-to-region beg end)
+          (save-excursion
+            (save-match-data
+              (gpt-doc--fix-args sexp))))))))
+
+
+(defun gpt-doc-escape-doc ()
+  "Convert argument names to uppercase in the current documentation string."
+  (pcase-let* ((`(,_type ,_name ,_str ,beg ,end)
+                (gpt-doc-get-current-doc-info)))
+    (save-excursion
+      (goto-char (1- end))
+      (while (re-search-backward
+              "\\(^[(']\\(\\(\\(?:\\sw\\|\\s_\\|\\\\.\\)+\\)\\([ )]\\)\\)\\)"
+              beg t 1)
+        (if (looking-back "=" 0)
+            (forward-char -1)
+          (insert "=")
+          (forward-char -1))
+        (pcase (skip-chars-backward "\\\\")
+          (0 (insert "\\\\"))
+          (-1 (insert "\\")))))))
+
+
+
 
 (defun gpt-doc--unqote-response-args (response)
   "Return a modified version of the input string with backquoted symbols unquoted.
@@ -619,7 +719,6 @@ Argument TEXT is a string containing the text to be formatted."
          l))
      sentences
      "\n")))
-
 
 
 (defun gpt-doc-forward-sexp (count)
@@ -1104,19 +1203,542 @@ their position in the original list of all definitions."
           (setq doc-pos (point)))))
     (cons sexp doc-pos)))
 
+(defun gpt-doc-fetch-models ()
+  "Fetch and sort GPT models by creation time from OpenAI API."
+  (let* ((url-request-method "GET")
+         (url-request-extra-headers
+          `(("Content-Type" . "application/json")
+            ("Authorization" . ,(format "Bearer %s"
+                                        (gpt-doc-get-api-key)))))
+         (buffer (url-retrieve-synchronously
+                  "https://api.openai.com/v1/models" nil 'silent))
+         (response (gpt-doc--json-parse-string
+                    (with-current-buffer buffer
+                      (buffer-substring-no-properties
+                       url-http-end-of-headers (point-max)))
+                    nil 'list)))
+    (nreverse (seq-sort-by
+               (lambda (it)
+                 (seconds-to-time (alist-get 'created it)))
+               #'time-less-p
+               (cdr (assq 'data response))))))
+
+(defun gpt-doc-format-time-diff (time)
+  "Calculate and format the TIME difference from the current time.
+
+Argument TIME is the time value that will be compared with the current time to
+calculate the time difference."
+  (let ((diff-secs (- (float-time (current-time))
+                      (float-time time))))
+    (pcase-let ((`(,format-str . ,value)
+                 (cond ((< diff-secs 60)
+                        (cons "%d second" (truncate diff-secs)))
+                       ((< diff-secs 3600)
+                        (cons "%d minute" (truncate (/ diff-secs 60))))
+                       ((< diff-secs 86400)
+                        (cons "%d hour" (truncate (/ diff-secs 3600))))
+                       ((< diff-secs 2592000)
+                        (cons "%d day" (truncate (/ diff-secs 86400))))
+                       (t
+                        (cons "%d month" (truncate (/ diff-secs 2592000)))))))
+      (format (concat format-str (if (= value 1) " ago" "s ago")) value))))
+
+(defun gpt-doc-read-model ()
+  "Fetch and select a GPT model based on creation time."
+  (let* ((models (gpt-doc-fetch-models))
+         (alist (mapcar (lambda (it)
+                          (cons (alist-get 'id it)
+                                it))
+                        models))
+         (annotf (lambda (str)
+                   (when-let ((data (cdr (assoc str alist))))
+                     (concat
+                      "  "
+                      (string-join (delq nil (list
+                                              (gpt-doc-format-time-diff
+                                               (time-to-seconds (alist-get
+                                                                 'created
+                                                                 data)))))
+                                   " ")
+                      " "))))
+         (display-sort-fn (lambda (items)
+                            (reverse (seq-sort-by (lambda (str)
+                                                    (let
+                                                        ((data
+                                                          (cdr
+                                                           (assoc str
+                                                                  alist))))
+                                                      (seconds-to-time (alist-get
+                                                                        'created
+                                                                        data))))
+                                                  #'time-less-p items)))))
+    (completing-read "Model: "
+                     (lambda (str pred action)
+                       (if (eq action 'metadata)
+                           `(metadata
+                             (annotation-function . ,annotf)
+                             (display-sort-function . ,display-sort-fn))
+                         (complete-with-action action alist str pred))))))
+
+
+(defun gpt-doc-collect-doc-dubs ()
+  "Collect duplicate documentation strings from a given buffer."
+  (let ((result)
+        (dubs))
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-max))
+        (while (and (gpt-doc-move-with 'backward-sexp)
+                    (looking-at "[(]"))
+          (pcase-let* ((doc
+                        (gpt-doc-get-current-doc-info)))
+            (when doc
+              (when-let* ((doc-str (nth 2 doc))
+                          (found (seq-find (pcase-lambda
+                                             (`(,_k ,_n ,str . _rest))
+                                             (and str (string= str doc-str)))
+                                           result)))
+                (push found dubs)
+                (push doc dubs))
+              (push doc result))))))
+    dubs))
+
+;;;###autoload
+(defun gpt-doc-redocument-all (&optional with-related-defs)
+  "Document all undocumented functions in a given Emacs Lisp file.
+
+Optional argument WITH-RELATED-DEFS, if non-nil, means the function will include
+related definitions in its documentation. Its default value is nil."
+  (interactive "p")
+  (save-excursion
+    (save-restriction
+      (widen)
+      (goto-char (point-max))
+      (while (and (gpt-doc-move-with 'backward-sexp)
+                  (looking-at "[(]"))
+        (pcase-let ((`(,_type ,n ,_doc ,_end)
+                     (gpt-doc-get-current-doc-info)))
+          (when (and n (yes-or-no-p (format "Regenerate doc %s?" n)))
+            (save-excursion
+              (gpt-doc with-related-defs))))))))
+
+;;;###autoload
+(defun gpt-doc-document-all (&optional with-related-defs)
+  "Document all undocumented functions in a given Emacs Lisp file.
+
+Optional argument WITH-RELATED-DEFS, if non-nil, means the function will include
+related definitions in its documentation. Its default value is nil."
+  (interactive "p")
+  (save-excursion
+    (save-restriction
+      (widen)
+      (goto-char (point-max))
+      (while (and (gpt-doc-move-with 'backward-sexp)
+                  (looking-at "[(]"))
+        (pcase-let ((`(,type ,_n ,doc ,_end)
+                     (gpt-doc-get-current-doc-info)))
+          (when (and type (not doc))
+            (save-excursion
+              (gpt-doc-stream with-related-defs))))))))
+
+(defun gpt-doc-get-current-doc-info ()
+  "Retrieve current documentation string and its start and end positions."
+  (pcase-let*
+      ((`(,sexp . ,doc-pos)
+        (gpt-doc-get-sexp-with-doc-pos)))
+    (when doc-pos
+      (save-excursion
+        (goto-char doc-pos)
+        (while
+            (when (skip-chars-forward "\s\t\n\r\f")
+              (looking-at comment-start))
+          (forward-comment 1))
+        (append (list (car sexp)
+                      (cadr sexp))
+                (when (looking-at "\"")
+                  (let* ((start (point))
+                         (end (progn (forward-sexp)
+                                     (point)))
+                         (curr (buffer-substring-no-properties start
+                                                               end)))
+                    (list curr
+                          start
+                          end))))))))
+
+
+
+
+
+(defun gpt-doc--stream-insert-response (transformer response info)
+  "Insert the transformed RESPONSE at the tracking marker in the current buffer.
+
+Argument TRANSFORMER is a function that is applied to the RESPONSE before it is
+inserted into the buffer.
+
+Argument RESPONSE is the text that is to be inserted into the buffer.
+
+Argument INFO is a property list that contains additional information such as
+the position and tracking marker."
+  (let ((start-marker (plist-get info :position))
+        (tracking-marker (plist-get info :tracking-marker)))
+    (when response
+      (with-current-buffer (marker-buffer start-marker)
+        (save-excursion
+          (unless tracking-marker
+            (goto-char start-marker)
+            (setq tracking-marker (set-marker (make-marker) (point)))
+            (set-marker-insertion-type tracking-marker t)
+            (plist-put info :tracking-marker tracking-marker))
+          (when transformer
+            (setq response (funcall transformer response)))
+          (put-text-property 0 (length response) 'gpt-doc 'response response)
+          (goto-char tracking-marker)
+          (gpt-doc-gpel-insert-with-fill response))))))
+
+
+(defun gpt-doc-gpel-insert-with-fill (response)
+  "Insert RESPONSE into buffer, wrapping text if width exceeds 80 characters.
+Argument RESPONSE is the string to be inserted into the buffer."
+  (let* ((curr-content
+          (let ((beg
+                 (let ((line-beg (line-beginning-position)))
+                   (save-excursion
+                     (goto-char line-beg)
+                     (if (looking-at "[\s\t]*\"")
+                         (re-search-forward "[\s\t]*\"" nil t 1)
+                       line-beg)))))
+            (buffer-substring-no-properties beg (point))))
+         (wid (string-width (concat
+                             curr-content
+                             response))))
+    (if (not (>= wid 80))
+        (insert response)
+      (insert response)
+      (fill-region-as-paragraph (line-beginning-position)
+                                (point)))))
+
+
+
+(defvar gpt-doc--process-alist nil
+  "Alist of active GPTel curl requests.")
+
+(defvar gpt-doc-post-response-hook '(gpt-doc-fix-arg-case))
+
+(defun gpt-doc-curl--stream-cleanup (process _status)
+  "Process sentinel for GPTel curl requests.
+
+PROCESS and _STATUS are process parameters."
+  (let ((proc-buf (process-buffer process)))
+    (when gpt-doc-gebug
+      (with-current-buffer proc-buf
+        (clone-buffer "*gpt-doc-error*" 'show)))
+    (let* ((info (alist-get process gpt-doc--process-alist))
+           (gpt-doc-buffer (plist-get info :buffer))
+           (tracking-marker (plist-get info :tracking-marker))
+           (start-marker (plist-get info :position))
+           (http-status (plist-get info :http-status))
+           (http-msg (plist-get info :status)))
+      (if (equal http-status "200")
+          (with-current-buffer (marker-buffer start-marker)
+            (pulse-momentary-highlight-region (+ start-marker 2)
+                                              tracking-marker))
+        (with-current-buffer proc-buf
+          (goto-char (point-max))
+          (search-backward (plist-get info :token))
+          (backward-char)
+          (pcase-let*
+              ((`(,_ . ,header-size)
+                (read (current-buffer)))
+               (response
+                (progn (goto-char header-size)
+                       (condition-case nil (gpt-doc-json-read-buffer 'plist)
+                         (json-readtable-error 'json-read-error)))))
+            (cond
+             ((plist-get response :error)
+              (let* ((error-plist (plist-get response :error))
+                     (error-msg (plist-get error-plist :message))
+                     (error-type (plist-get error-plist :type)))
+                (message "ChatGPT error: (%s) %s" http-msg error-msg)
+                (setq http-msg (concat "("  http-msg ") " (string-trim error-type)))))
+             ((eq response 'json-read-error)
+              (message "ChatGPT error (%s): Malformed JSON in response."
+                       http-msg))
+             (t (message "ChatGPT error (%s): Could not parse HTTP response."
+                         http-msg)))))
+        (message (format " Response Error: %s" http-msg)))
+      (with-current-buffer gpt-doc-buffer
+        (run-hooks 'gpt-doc-post-response-hook)))
+    (setf (alist-get process gpt-doc--process-alist nil 'remove) nil)
+    (kill-buffer proc-buf)))
+
+
+
+
+(defun gpt-doc-curl--stream-filter (process output)
+  "Insert output and response data into a PROCESS buffer.
+
+Argument PROCESS is the process object associated with the current
+stream.
+
+Argument OUTPUT is the output string from the PROCESS."
+  (let* ((proc-info (alist-get process gpt-doc--process-alist)))
+    (with-current-buffer (process-buffer process)
+      (save-excursion
+        (goto-char (process-mark process))
+        (insert output)
+        (set-marker (process-mark process)
+                    (point)))
+      (unless (plist-get proc-info :http-status)
+        (save-excursion
+          (goto-char (point-min))
+          (when-let* (((not (= (line-end-position)
+                               (point-max))))
+                      (http-msg (buffer-substring (line-beginning-position)
+                                                  (line-end-position)))
+                      (http-status
+                       (save-match-data
+                         (and (string-match "HTTP/[.0-9]+ +\\([0-9]+\\)"
+                                            http-msg)
+                              (match-string 1 http-msg)))))
+            (plist-put proc-info :http-status http-status)
+            (plist-put proc-info :status (string-trim http-msg))))
+        (when (with-current-buffer (plist-get proc-info :buffer)
+                (or buffer-read-only
+                    (get-char-property (plist-get proc-info :position)
+                                       'read-only)))
+          (message
+           "Buffer is read only, displaying reply in buffer \"*GPT-DOC response*\"")
+          (display-buffer
+           (with-current-buffer (get-buffer-create "*GPT-DOC response*")
+             (goto-char (point-max))
+             (move-marker (plist-get proc-info :position)
+                          (point)
+                          (current-buffer))
+             (current-buffer))
+           '((display-buffer-reuse-window
+              display-buffer-pop-up-window)
+             (reusable-frames . visible)))))
+      (when-let ((http-msg (plist-get proc-info :status))
+                 (http-status (plist-get proc-info :http-status)))
+        (when (equal http-status "200")
+          (funcall (or (plist-get proc-info :callback)
+                       (apply-partially
+                        #'gpt-doc--stream-insert-response
+                        (apply-partially #'gpt-doc-pipe-ignore-errors
+                                         `(gpt-doc--unqote-response-args))))
+                   (let* ((json-object-type 'plist)
+                          (content-strs))
+                     (condition-case nil
+                         (while (re-search-forward "^data:" nil t)
+                           (save-match-data
+                             (unless (looking-at " *\\[DONE\\]")
+                               (when-let* ((response (gpt-doc-json-read-buffer
+                                                      'plist))
+                                           (delta
+                                            (plist-get (elt
+                                                        (plist-get response
+                                                                   :choices)
+                                                        0)
+                                                       :delta))
+                                           (content (plist-get delta :content)))
+                                 (push content content-strs)))))
+                       (error
+                        (goto-char (match-beginning 0))))
+                     (apply #'concat (nreverse content-strs)))
+                   proc-info))))))
+
+(defun gpt-doc--get-curl-stream-args (prompts token)
+  "Produce list of arguments for calling Curl.
+
+PROMPTS is the data to send, TOKEN is a unique identifier."
+  (let* ((data (encode-coding-string
+                (json-encode
+                 `(:model ,gpt-doc-gpt-model
+                          :messages [,@prompts]
+                          :stream t
+                          :temperature ,gpt-doc-gpt-temperature))
+                'utf-8))
+         (headers
+          `(("Content-Type" . "application/json")
+            ("Authorization" . ,(concat "Bearer "
+                                        (gpt-doc-get-api-key))))))
+    (append
+     (list "--location" "--silent" "--compressed" "--disable"
+           (format "-X%s" "POST")
+           (format "-w(%s . %%{size_header})" token)
+           (format "-m%s" 60)
+           "-D-"
+           (format "-d%s" data))
+     (seq-map (lambda (header)
+                (format "-H%s: %s" (car header)
+                        (cdr header)))
+              headers)
+     (list gpt-doc-gpt-url))))
+
+(defun gpt-doc-stream-get-response (info &optional callback)
+  "Fetch and handle a response from a GPT document stream.
+
+Argument INFO is a property list containing the necessary information for
+the function to operate.
+
+Optional argument CALLBACK is a function that will be called when the process
+finishes."
+  (let* ((token (md5 (format "%s%s%s%s" (random)
+                             (emacs-pid)
+                             (user-full-name)
+                             (recent-keys))))
+         (args (gpt-doc--get-curl-stream-args (plist-get info :prompt) token))
+         (process (apply #'start-process "gptdoc-curl"
+                         (generate-new-buffer "*gptdoc-curl*") "curl" args)))
+    (with-current-buffer (process-buffer process)
+      (set-process-query-on-exit-flag process nil)
+      (setf (alist-get process gpt-doc--process-alist)
+            (nconc
+             (list
+              :token token
+              :callback
+              (or callback
+                  (apply-partially
+                   #'gpt-doc--stream-insert-response
+                   (apply-partially #'gpt-doc-pipe-ignore-errors
+                                    `(gpt-doc--unqote-response-args)))))
+             info))
+      (set-process-sentinel process #'gpt-doc-curl--stream-cleanup)
+      (set-process-filter process #'gpt-doc-curl--stream-filter))))
+
+
+(defun gpt-doc-stream-request (prompt system &optional callback buffer position)
+  "Send a streaming request to GPT with a PROMPT and SYSTEM message.
+
+Argument PROMPT is a string that represents the user's input.
+
+Argument SYSTEM is a string that represents the system's response.
+
+Optional argument CALLBACK is a function to be called when the request is
+completed.
+
+Optional argument BUFFER is the buffer where the request is made. If not
+provided, the current BUFFER is used.
+
+Optional argument POSITION is the position in the BUFFER where the request is
+made. It can be a marker or an integer. If not provided, the current point or
+the end of the region is used."
+  (let* ((buffer (or buffer (current-buffer)))
+         (start-marker
+          (cond ((null position)
+                 (if (use-region-p)
+                     (set-marker (make-marker)
+                                 (region-end))
+                   (point-marker)))
+                ((markerp position) position)
+                ((integerp position)
+                 (set-marker (make-marker) position buffer)))))
+    (gpt-doc-stream-get-response
+     (list
+      :prompt `((:role "system"
+                       :content ,system)
+                (:role "user"
+                       :content ,prompt))
+      :buffer buffer
+      :position start-marker)
+     callback)))
+
+;;;###autoload
+(defun gpt-doc-stream-abort (buff)
+  "Terminate the process associated with a buffer BUFF and delete its buffer.
+
+Argument BUFF is the buffer in which the process to be aborted is running."
+  (interactive (list (current-buffer)))
+  (if-let* ((proc-attrs
+             (seq-find
+              (lambda (proc-list)
+                (eq (plist-get (cdr proc-list) :buffer) buff))
+              gpt-doc--process-alist))
+            (proc (car proc-attrs)))
+      (progn
+        (setf (alist-get proc gpt-doc--process-alist nil 'remove) nil)
+        (set-process-sentinel proc #'ignore)
+        (delete-process proc)
+        (kill-buffer (process-buffer proc))
+        (message "gpt-doc: Aborted request in buffer %S" (buffer-name buff)))
+    (message "gpt-doc: no request to abort in buffer %S" (buffer-name buff))))
+
+;;;###autoload
+(defun gpt-doc-stream (&optional with-related-defs)
+  "Generate and insert documentation using curl for streaming.
+
+Request can be aborted with command `gpt-doc-stream-abort'.
+
+Optional prefix argument WITH-RELATED-DEFS determines whether to include
+related definitions.
+
+If it is 1, no related definitions are included.
+If it is 4, shallow related definitions are included.
+If it is 16, all related definitions are included."
+  (interactive "p")
+  (pcase-let*
+      ((`(,sexp . ,doc-pos)
+        (gpt-doc-get-sexp-with-doc-pos))
+       (buff (current-buffer))
+       (related-defs
+        (and sexp
+             doc-pos
+             (pcase with-related-defs
+               (1 nil)
+               (4 (gpt-doc-get-shallow-related-defs sexp))
+               (16 (gpt-doc-get-related-defs sexp)))))
+       (`(,short-user-prompt . ,short-system-prompt)
+        (gpt-doc-get-prompt-for-summary sexp related-defs))
+       (`(,arg-user-prompt . ,arg-system-prompt)
+        (gpt-doc-get-prompt-for-args sexp related-defs))
+       (`(,_type ,_name ,_str ,beg ,end)
+        (gpt-doc-get-current-doc-info)))
+    (when doc-pos
+      (with-current-buffer buff
+        (barf-if-buffer-read-only)
+        (when (and beg end)
+          (delete-region beg end))
+        (goto-char doc-pos)
+        (if (looking-back "\n" 0)
+            (indent-according-to-mode)
+          (newline-and-indent)
+          (insert (prin1-to-string ""))
+          (forward-char -1)
+          (when arg-system-prompt
+            (save-excursion
+              (insert "\n\n")
+              (gpt-doc-stream-request arg-user-prompt
+                                      arg-system-prompt
+                                      (apply-partially
+                                       #'gpt-doc--stream-insert-response
+                                       (apply-partially
+                                        #'gpt-doc-pipe-ignore-errors
+                                        `(gpt-doc--unqote-response-args))))))
+          (gpt-doc-stream-request
+           short-user-prompt
+           short-system-prompt
+           (apply-partially
+            #'gpt-doc--stream-insert-response
+            (apply-partially
+             #'gpt-doc-pipe-ignore-errors
+             `(,(apply-partially
+                 #'gpt-doc--upcase-args
+                 sexp)
+               gpt-doc--unqote-response-args)))))))))
 
 ;;;###autoload
 (defun gpt-doc-document-current-function (&optional with-related-defs)
-  "Generate documentation for the current defintion.
+  "Generate documentation for the current function in the buffer.
 
-Optional argument WITH-RELATED-DEFS is a flag that determines whether related
-definitions should be included in the documentation.
+Optional prefix argument WITH-RELATED-DEFS determines whether to include related
+definitions in the documentation. It can be either 1, 4, or 16.
 
-It can take three values: 1 (default), 4, or 16.
+If WITH-RELATED-DEFS is 1, no related definitions are included.
 
-When it's 1, no related definitions are included.
-When it's 4, shallow related definitions are included.
-When it's 16, all related definitions are included."
+If WITH-RELATED-DEFS is 4, shallow related definitions are included.
+
+If WITH-RELATED-DEFS is 16, all related definitions are included."
   (interactive "p")
   (pcase-let*
       ((`(,sexp . ,doc-pos)
@@ -1143,6 +1765,26 @@ When it's 16, all related definitions are included."
               (insert (prin1-to-string text))
               (forward-sexp -1)
               (forward-char 1))))))))
+
+;;;###autoload
+(defun gpt-doc (&optional with-related-defs)
+  "Generate and insert documentation for a definition at point.
+
+If `gpt-doc-use-stream' is non nil, use curl for streaming response.
+
+Optional prefix argument WITH-RELATED-DEFS determines whether to include related
+definitions.
+
+If it is 1, no related definitions are included.
+
+If it is 4, shallow related definitions are included.
+
+If it is 16, all related definitions are included."
+  (interactive "p")
+  (funcall (if gpt-doc-use-stream
+               #'gpt-doc-stream
+             #'gpt-doc-document-current-function)
+           with-related-defs))
 
 (provide 'gpt-doc)
 ;;; gpt-doc.el ends here
