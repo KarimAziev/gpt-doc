@@ -35,12 +35,27 @@
 
 ;;  Usage
 
-;; `gpt-doc-document-current-function'
+;; Run M-x `gpt-doc' to document variable/function/macro definition at point by
+;; streaming response, if `gpt-doc-use-stream' is non-nil, othervise
+;; synchronously.
 
-;; This command documents the current Elisp definition using the GPT-3 API. It
-;; prompts the user for code input, sends the code to the API for documentation
-;; generation, and inserts the generated documentation into the current buffer.
+;; Run M-x `gpt-doc-stream' (requires curl) to document variable/function/macro
+;; definition at point by streaming response.
 
+;; Run M-x `gpt-doc-document-current-function' to document
+;; variable/function/macro definition at point synchronously.
+
+;; By default, these commands sends only the current thing, but with a prefix
+;; argument, you can also send related definitions to provide more context.
+
+;; When the prefix argument is 1 (default), no related definitions are included.
+
+;; When the prefix argument is 4, shallow-related definitions are included. When
+;; the prefix argument is 16, all related definitions are included.
+
+;; The generated documentation will be formatted and inserted automatically
+;; according to Emacs' style requirements. The documentation is also formatted to
+;; fit within an 80-column screen.
 
 ;;; Code:
 
@@ -1729,7 +1744,7 @@ If it is 16, all related definitions are included."
 
 ;;;###autoload
 (defun gpt-doc-document-current-function (&optional with-related-defs)
-  "Generate documentation for the current function in the buffer.
+  "Generate documentation for the current function in the buffer synchronously.
 
 Optional prefix argument WITH-RELATED-DEFS determines whether to include related
 definitions in the documentation. It can be either 1, 4, or 16.
@@ -1771,6 +1786,7 @@ If WITH-RELATED-DEFS is 16, all related definitions are included."
   "Generate and insert documentation for a definition at point.
 
 If `gpt-doc-use-stream' is non nil, use curl for streaming response.
+Request can be aborted with command `gpt-doc-stream-abort'.
 
 Optional prefix argument WITH-RELATED-DEFS determines whether to include related
 definitions.
