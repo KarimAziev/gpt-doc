@@ -94,17 +94,59 @@ of the response, with 2.0 being the most random."
   :type 'string)
 
 
-(defcustom gpt-doc-variable-prompt "The user will provide you an Emacs Lisp Code. Your task is to write documentation for %s in one sentence. Use imperative verbs only and avoid third-party phrasing, with a maximum of 78 characters."
+(defcustom gpt-doc-variable-prompt "The user will provide you an Emacs Lisp Code. Your task is to write documentation for %s in one sentence. Use imperative verbs only and avoid third-party phrasing, with a maximum of 78 characters. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", in `%s' and so on. Do NOT wrap the start and end of your text in quotes."
   "System prompt (directive) for ChatGPT to document Elisp variables."
   :group 'gpt-doc
   :type 'string)
 
-(defcustom gpt-doc-first-sentence-doc-prompt "Write a very short sentence that starts with imperative verb about what the %s below does in maximum *70* characters. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", in `%s' and so on."
+
+(defcustom gpt-doc-first-sentence-doc-prompt "Write a very short sentence that starts with imperative verb about what the %s below does in maximum *70* characters. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", in `%s' and so on. Do NOT wrap the start and end of your text in quotes."
   "System prompt to generate first sentence of function documentation."
   :group 'gpt-doc
   :type 'string)
 
-(defcustom gpt-doc-args-prompt "The user will provide you an Emacs Lisp code. Provide a sentence for every argument of %s that starts either with \"Argument \",  \"Optional argument \" or \"Arguments \" description such as type, default value without any additional text, prompt or note."
+(defcustom gpt-doc-args-prompt "The user will provide you an Emacs Lisp code.
+Provide a sentence for every argument of %s that starts either with \"Argument \",  \"Optional argument \", \"Remaining arguments\" or \"Arguments \" description such as type, default value without any additional text, prompt or note.
+
+Sentences should be separated by two newline characters.
+1. Do NOT wrap the start and end of your text in quotes.
+2. Make sure that your text doesn't exceed 70 columns in width.
+3. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", \"this function\",
+\"you\" and so on.
+
+Failure to comply with these rules will result in an error.
+
+Example 1:
+```elisp
+(defun km-call-process (program &rest args)
+  (with-temp-buffer
+    (let ((status (apply #'call-process program nil t nil
+                         (flatten-list args))))
+      (let ((result (string-trim (buffer-string))))
+        (if (zerop status)
+            result
+          (message result) nil)))))
+```
+Argument PROGRAM is the shell command to run.
+
+Remaining arguments ARGS are strings passed as command arguments to PROGRAM.
+
+Example 2:
+```elisp
+(defun gpt-doc--json-parse-string (str &optional object-type array-type null-object false-object) (if (and (fboundp 'json-parse-string) (fboundp 'json-available-p) (json-available-p)) (json-parse-string str :object-type (or object-type 'alist) :array-type (pcase array-type ('list 'list) ('vector 'array) (_ 'array)) :null-object (or null-object :null) :false-object (or false-object :false)) (require 'json) (let ((json-object-type (or object-type 'alist)) (json-array-type (pcase array-type ('list 'list) ('array 'vector) (_ 'vector))) (json-null (or null-object :null)) (json-false (or false-object :false))) (json-read-from-string str))))
+```
+The argument OBJECT-TYPE is the type is used
+to represent objects; it can be `hash-table', `alist' or `plist'.  It
+defaults to `alist'.
+
+The argument ARRAY-TYPE specifies which Lisp type is used
+to represent arrays; `array'/`vector' and `list'.
+
+The argument NULL-OBJECT specifies which object to use
+to represent a JSON null value.  It defaults to `:null'.
+
+The argument FALSE-OBJECT specifies which object to use to
+represent a JSON false value.  It defaults to `:false'."
   "System prompt for ChatGPT to document Elisp arguments."
   :group 'gpt-doc
   :type 'string)
@@ -176,10 +218,11 @@ return number to move forward across."
           :key-type symbol
           :value-type string))
 
-(defun gpt-doc-debug-log (&rest args)
-  "Log debug messages when `gpt-doc-gebug' is true.
 
-Argument ARGS is a list of arguments that can be of any type."
+(defun gpt-doc-debug-log (&rest args)
+  "Log debug messages when `gpt-doc-debug' is true.
+
+Argument ARGS is a list of arguments for `message'."
   (when gpt-doc-gebug
     (apply #'message args)))
 
