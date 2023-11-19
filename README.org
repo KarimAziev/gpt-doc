@@ -93,19 +93,37 @@ And assign ~gpt-doc-api-key-from-auth-source~ to ~gpt-doc-api-key~:
 
 * Usage
 
-Run ~M-x gpt-doc~ to document variable/function/macro definition at point by streaming response, if =gpt-doc-use-stream= is non-nil, othervise synchronously.
+- =M-x gpt-doc= (&optional with-related-defs)= ::
 
-Run ~M-x gpt-doc-stream~ (requires curl) to document variable/function/macro definition at point by streaming response.
+  Generate and insert documentation for a definition at the point.
 
-Run ~M-x gpt-doc-document-current-function~ to document variable/function/macro definition at point synchronously.
+  The optional prefix argument determines whether to include related definitions:
 
-By default, these commands sends only the current thing, but with a prefix argument, you can also send related definitions to provide more context.
+    - If omitted, =gpt-doc-default-context-strategy= will be used as the default.
+    - If it is 1, no related definitions are included.
+    - If it is 4, shallow related definitions are included.
+    - If it is 16, all related definitions are included.
 
-When the prefix argument is 1 (default), no related definitions are included.
-When the prefix argument is 4, shallow-related definitions are included.
-When the prefix argument is 16, all related definitions are included.
+    Use streaming if =gpt-doc-use-stream= is non-nil; otherwise, perform a synchronous request.
 
-The generated documentation will be formatted and inserted automatically according to Emacs' style requirements. The documentation is also formatted to fit within an 80-column screen.
+    When streaming, requests can be aborted with the command =gpt-doc-abort-all=.
+
+- =M-x gpt-doc-with-context=
+    The same as =gpt-doc=, but by default, it includes shallow related definitions.
+
+- =M-x gpt-doc-with-full-context=
+    The same as =gpt-doc=, but by default, it includes all related definitions.
+
+- =M-x gpt-doc-redocument-all=
+    Redocument all definitions backward in the current buffer using stream.
+    An optional prefix argument WITH-RELATED-DEFS determines whether to include related definitions.
+
+- =M-x gpt-doc-abort-all=
+    Terminate the process associated with a buffer BUFF and delete its buffer.
+    The argument BUFF is the buffer in which the process to be aborted is running.
+
+- =M-x gpt-doc-regenerate-dups=
+    Regenerate duplicate documentation in the buffer.
 
 * Customization
 **** ~gpt-doc-gpt-model~
