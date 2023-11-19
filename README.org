@@ -4,8 +4,8 @@
 
 =gpt-doc= is an Emacs library that allows you to document Elisp code using the GPT API. It provides functions to send code snippets to an external service and retrieve generated documentation, which is then automatically inserted into the correct place.
 
+[[./gpt-doc.gif][./gpt-doc.gif]]
 
-[[./gpt-doc-demo.gif][./gpt-doc-demo.gif]]
 
 * Table of Contents                                       :TOC_2_gh:QUOTE:
 #+BEGIN_QUOTE
