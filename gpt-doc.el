@@ -2016,17 +2016,17 @@ or region end is used."
          (callback
           (lambda (response)
             (let ((err (plist-get response :error)))
-              (message "gpt-doc: running callback" )
               (if err
-                  (progn (message "gpt-doc-callback err %s" (or
-                                                             (plist-get err
-                                                                        :message)
-                                                             err))
-                         (when (buffer-live-p buffer)
-                           (let ((start-marker
-                                  (plist-get info
-                                             :position)))
-                             (gpt-doc-restore-abort-marker start-marker))))
+                  (progn
+                    (message "gpt-doc-callback err %s" (or
+                                                        (plist-get err
+                                                                   :message)
+                                                        err))
+                    (when (buffer-live-p buffer)
+                      (let ((start-marker
+                             (plist-get info
+                                        :position)))
+                        (gpt-doc-restore-abort-marker start-marker))))
                 (when (buffer-live-p buffer)
                   (with-current-buffer buffer
                     (gpt-doc--stream-insert-response
@@ -2040,29 +2040,29 @@ or region end is used."
            (lambda (status &rest _events)
              (let* ((buff (current-buffer))
                     (err
-                     (or (when-let ((err (plist-get status :error)))
-                           (concat (propertize
-                                    "gpt-commit request error: "
-                                    'face
-                                    'error)
-                                   (mapconcat (apply-partially #'format "%s")
-                                              (delq nil
-                                                    (list (or
-                                                           (when-let ((type
-                                                                       (ignore-errors
-                                                                         (cadr
-                                                                          err))))
-                                                             type)
-                                                           err)
-                                                          (ignore-errors (caddr
-                                                                          err))))
-                                              " ")))
-                         (progn (when (and (boundp 'url-http-end-of-headers)
-                                           url-http-end-of-headers)
-                                  (goto-char url-http-end-of-headers))
-                                (ignore-errors
-                                  (gpt-doc-get-response-error (gpt-doc-json--read-buffer 'alist)))))))
-               (message "gpt-doc: running status-callback %s" err)
+                     (or
+                      (when-let ((err (plist-get status :error)))
+                        (concat (propertize
+                                 "gpt-commit request error: "
+                                 'face
+                                 'error)
+                                (mapconcat (apply-partially #'format "%s")
+                                           (delq nil
+                                                 (list (or
+                                                        (when-let ((type
+                                                                    (ignore-errors
+                                                                      (cadr
+                                                                       err))))
+                                                          type)
+                                                        err)
+                                                       (ignore-errors (caddr
+                                                                       err))))
+                                           " ")))
+                      (progn (when (and (boundp 'url-http-end-of-headers)
+                                        url-http-end-of-headers)
+                               (goto-char url-http-end-of-headers))
+                             (ignore-errors
+                               (gpt-doc-get-response-error (gpt-doc-json--read-buffer 'alist)))))))
                (when err
                  (run-with-timer 0.5 nil #'gpt-doc-abort-url-retrieve
                                  buff)
@@ -2259,8 +2259,6 @@ If WITH-RELATED-DEFS is 1, no related definitions are included.
 If WITH-RELATED-DEFS is 4, shallow related definitions are included.
 
 If WITH-RELATED-DEFS is 16, all related definitions are included.
-
-Optional argument CALLBACK is a function to be called when the documentation
 
 If documentation is already in progress for the current element,
 display a message indicating so.
