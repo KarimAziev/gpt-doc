@@ -1,3 +1,24 @@
+* v0.3.0    2023-11-19
+- Allow streaming without Curl.
+- Add custom variable =gpt-doc-default-context-strategy=, which is used as default argument for =gpt-doc= command.
+- New commands:
+- =gpt-doc-with-context=
+    The same as =gpt-doc=, but by default, it includes shallow related definitions.
+
+- =gpt-doc-with-full-context=
+    The same as =gpt-doc=, but by default, it includes all related definitions.
+
+- =gpt-doc-redocument-all=
+    Redocument all definitions backward in the current buffer using stream.
+    An optional prefix argument WITH-RELATED-DEFS determines whether to include related definitions.
+
+- =gpt-doc-abort-all=
+    Terminate the process associated with a buffer BUFF and delete its buffer.
+    The argument BUFF is the buffer in which the process to be aborted is running.
+
+- =gpt-doc-regenerate-dups=
+    Regenerate duplicate documentation in the buffer.
+
 * v0.2.0    2023-11-05
 - Add a new customization variable =gpt-doc-use-stream= to detect if =curl= exists and decide whether to use curl for streaming or not.
 - Add the =gpt-doc= command that generates and inserts documentation for a function definition at the point according to the =gpt-doc-use-stream= setting.
