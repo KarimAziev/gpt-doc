@@ -1288,7 +1288,8 @@ Argument SEXP is a symbolic expression (sexp) in Emacs Lisp."
                                     (or
                                      (not
                                       (memq (car-safe item)
-                                            '(defvar defun cl-defun defcustom)))
+                                            '(defvar defun cl-defun defcustom
+                                               defmacro defcustom)))
                                      (gpt-doc-looks-like-keymapp item)))
                                   all-defs)))
     (let ((name)
