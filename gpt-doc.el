@@ -1396,26 +1396,6 @@ only shallow related definitions are included."
                       (insert str))))
                 (select-window window))))))))
 
-(defun gpt-doc-get-prev-sexp-start ()
-  "Find start of previous sexp."
-  (save-excursion
-    (let ((sexp-start (gpt-doc-get-curr-sexp-start))
-          (prev-sexp-start))
-      (if sexp-start
-          (progn (goto-char sexp-start)
-                 (while (and
-                         (not prev-sexp-start)
-                         (gpt-doc-move-with 'backward-sexp))
-                   (setq prev-sexp-start (gpt-doc-get-curr-sexp-start)))
-                 prev-sexp-start)
-        (progn
-          (ignore-errors
-            (backward-up-list most-positive-fixnum))
-          (while (and (not sexp-start)
-                      (gpt-doc-move-with 'backward-sexp))
-            (setq sexp-start (gpt-doc-get-curr-sexp-start)))
-          sexp-start)))))
-
 (defun gpt-doc-get-curr-sexp-start ()
   "Find the start position of the current sexp."
   (pcase-let
@@ -1811,48 +1791,6 @@ Argument RESPONSE is a plist containing the API response data."
               (delta (plist-get choice :delta))
               (content (plist-get delta :content)))
     (decode-coding-string content 'utf-8)))
-
-(defun gpt-doc--show-error (error-message)
-  "Display a custom error message in a buffer.
-
-Argument ERROR-MESSAGE is a string containing the error message to be
-displayed."
-  (condition-case nil
-      (let ((buf (get-buffer-create "*gpt-doc error*")))
-        (with-current-buffer buf
-          (read-only-mode -1)
-          (erase-buffer)
-          (insert "gpt-doc: Error from API:\n\n")
-          (insert error-message)
-          (display-buffer buf)
-          (goto-char (point-min))
-          (toggle-truncate-lines -1)
-          (read-only-mode 1)
-          (local-set-key (kbd "q")
-                         (lambda ()
-                           (interactive)
-                           (kill-buffer)))
-          t))
-    (error nil)))
-
-
-(defun gpt-doc--maybe-show-request-error (request-buffer)
-  "Display error from HTTP request if present.
-
-Argument REQUEST-BUFFER is the buffer containing the HTTP request response to be
-checked for errors."
-  (with-current-buffer request-buffer
-    (when (and (boundp 'url-http-end-of-headers) url-http-end-of-headers)
-      (goto-char url-http-end-of-headers))
-    (condition-case nil
-        (when-let* ((body (gpt-doc-json--read-buffer 'alist))
-                    (err (alist-get 'error body))
-                    (err-msg (alist-get 'message err))
-                    (msg (if (and err-msg (not (string-blank-p err-msg)))
-                             err-msg
-                           (json-encode err))))
-          (gpt-doc--show-error msg))
-      (error nil))))
 
 (defvar gpt-doc--debug-data-raw nil)
 
