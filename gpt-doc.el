@@ -348,9 +348,13 @@ Argument SYMBOLS is an optional list of symbols to match against.
 Return a cons cell containing the start and end positions of the defun sexp."
   (let ((result))
     (save-excursion
-      (while (progn (setq result (let ((sexp (sexp-at-point)))
-                                   (when (and sexp (proper-list-p sexp)
-                                              (assq (car sexp) gpt-doc-docstring-positions))
+      (while (progn (setq result (let ((sexp
+                                        (sexp-at-point)))
+                                   (when
+                                       (and sexp
+                                            (proper-list-p sexp)
+                                            (assq (car sexp)
+                                                  gpt-doc-docstring-positions))
                                      (when-let* ((beg (point))
                                                  (end (gpt-doc-forward-sexp 1)))
                                        (cons beg end)))))
@@ -1987,23 +1991,25 @@ or region end is used."
                                  "gpt-commit request error: "
                                  'face
                                  'error)
-                                (mapconcat (apply-partially #'format "%s")
-                                           (delq nil
-                                                 (list (or
-                                                        (when-let ((type
-                                                                    (ignore-errors
-                                                                      (cadr
-                                                                       err))))
-                                                          type)
-                                                        err)
-                                                       (ignore-errors (caddr
-                                                                       err))))
-                                           " ")))
+                                (mapconcat
+                                 (apply-partially #'format "%s")
+                                 (delq nil
+                                       (list (or
+                                              (when-let ((type
+                                                          (ignore-errors
+                                                            (cadr
+                                                             err))))
+                                                type)
+                                              err)
+                                             (ignore-errors (caddr
+                                                             err))))
+                                 " ")))
                       (progn (when (and (boundp 'url-http-end-of-headers)
                                         url-http-end-of-headers)
                                (goto-char url-http-end-of-headers))
                              (ignore-errors
-                               (gpt-doc-get-response-error (gpt-doc-json--read-buffer 'alist)))))))
+                               (gpt-doc-get-response-error
+                                (gpt-doc-json--read-buffer 'alist)))))))
                (when err
                  (run-with-timer 0.5 nil #'gpt-doc-abort-url-retrieve
                                  buff)
