@@ -747,6 +747,7 @@ Argument POS is the buffer position to check for visibility within the window."
     (when (and beg end)
       (run-hook-with-args 'after-change-functions beg end 0))))
 
+;;;###autoload
 (defun gpt-doc-post-fix ()
   "Normalize and highlight documentation text."
   (interactive)
@@ -1354,6 +1355,7 @@ their position in the original list of all definitions."
                        (or pos 0)))
                    #'< related-defs))))
 
+;;;###autoload
 (defun gpt-doc-show-related-defs (&optional all)
   "Display related definitions for an Emacs Lisp expression.
 
