@@ -70,13 +70,10 @@
 
 ;;; Code:
 
-
 (defvar json-object-type)
 (defvar json-array-type)
 (defvar json-false)
 (defvar json-null)
-
-
 (defvar url-request-method)
 (defvar url-request-data)
 (defvar url-request-extra-headers)
@@ -89,7 +86,6 @@
 (declare-function auth-source-search "auth-source")
 
 (require 'subr-x)
-
 
 (defcustom gpt-doc-api-key ""
   "An OpenAI API key (string).
@@ -159,12 +155,10 @@ being documented:
   :group 'gpt-doc
   :type 'string)
 
-
 (defcustom gpt-doc-variable-prompt "The user will provide you an Emacs Lisp Code. Your task is to write documentation for %s in one sentence. Use imperative verbs only and avoid third-party phrasing, with a maximum of 78 characters. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", in `%s' and so on. Do NOT wrap the start and end of your text in quotes."
   "System prompt (directive) for ChatGPT to document Elisp variables."
   :group 'gpt-doc
   :type 'string)
-
 
 (defcustom gpt-doc-first-sentence-doc-prompt "The user will provide you an Emacs Lisp code. Write a very short sentence that starts with imperative verb about what the %s below does in maximum *70* characters. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", in `%s' and so on. Do NOT wrap the start and end of your text in quotes."
   "System prompt to generate first sentence of function documentation."
@@ -271,7 +265,6 @@ return number to move forward across."
                        (number :tag "Documentation position")
                        (function :tag "Custom function"))))
 
-
 (defcustom gpt-doc-prompt-types (mapcar (lambda (it)
                                           (setcar it (intern (car it)))
                                           it)
@@ -309,11 +302,8 @@ Argument ARGS is a list of arguments for `message'."
   (when gpt-doc-debug
     (apply #'message args)))
 
-
-
 (defvar gpt-doc--request-url-buffers nil
   "Alist of active request buffers requests.")
-
 
 (defun gpt-doc-move-with (fn &optional n)
   "Move by calling FN N times.
@@ -362,7 +352,6 @@ Return a cons cell containing the start and end positions of the defun sexp."
                          (gpt-doc-backward-up-list)))))
     result))
 
-
 (defun gpt-doc-json--read-buffer (&optional object-type array-type null-object
                                             false-object)
   "Parse json from the current buffer using specified object and array types.
@@ -400,6 +389,7 @@ represent a JSON false value.  It defaults to `:false'."
           (json-null (or null-object :null))
           (json-false (or false-object :false)))
       (json-read))))
+
 (defun gpt-doc--json-parse-string (str &optional object-type array-type
                                        null-object false-object)
   "Parse STR with natively compiled function or with json library.
@@ -439,7 +429,6 @@ represent a JSON false value.  It defaults to `:false'."
           (json-false (or false-object :false)))
       (json-read-from-string str))))
 
-
 (defun gpt-doc-api-key-from-auth-source (&optional url)
   "Return the fist API key from the auth source for URL.
 By default, the value of `gpt-doc-gpt-url' is used as URL."
@@ -456,7 +445,6 @@ By default, the value of `gpt-doc-gpt-url' is used as URL."
         secret)
     (user-error "No `gpt-doc-api-key' found in the auth source")))
 
-
 (defun gpt-doc-get-api-key ()
   "Return the value of `gpt-doc-api-key' if it is a function.
 If it is a string, prompt the user for a key, save it, and renturn the key.
@@ -472,7 +460,6 @@ If `gpt-doc-api-key' is not set, raise an error."
            (customize-save-variable 'gpt-doc-api-key key))))
      gpt-doc-api-key)
     (_ (error "`gpt-doc-api-key' is not set"))))
-
 
 (defun gpt-doc-gpt-request (gpt-prompt system-prompt)
   "Return the response from a request to the OpenAI API.
@@ -535,7 +522,6 @@ Argument RESPONSE is the alist."
 (defun gpt-doc-upcased-p (string)
   "Return non-nil if STRING has no lowercase."
   (string= (upcase string) string))
-
 
 (defun gpt-doc-symbol-p (elem)
   "Return whether the given element ELEM is a non-nil symbol.
@@ -650,8 +636,6 @@ expression."
               (delete-char -1)))))
       (buffer-string))))
 
-
-
 (defun gpt-doc--upcase-args (sexp str)
   "Return the STR with all arguments of SEXP upcased.
 
@@ -734,6 +718,7 @@ Argument STR is the string to upcase arguments in."
 (defvar gpt-doc-normalize-fns '(gpt-doc-fix-arg-case
                                 gpt-doc-escape-doc
                                 gpt-doc-fix-symbols-quotes))
+
 (defun gpt-doc-point-visible (pos)
   "Check if position is visible in window.
 
@@ -765,7 +750,6 @@ Argument POS is the buffer position to check for visibility within the window."
         (goto-char beg))
       (gpt-doc-highlight-doc)
       (gpt-doc-run-after-change-hook))))
-
 
 (defun gpt-doc-escape-doc-str (str)
   "Escape open parentheses and unescaped single and double quotes in STR."
@@ -814,9 +798,6 @@ Argument POS is the buffer position to check for visibility within the window."
                 (replace-match symb)
               (replace-match (concat "`" symb "'")))))))))
 
-
-
-
 (defun gpt-doc--unqote-response-args (response)
   "Return a modified version of the input string with backquoted symbols unquoted.
 Argument RESPONSE is the input string to be modified."
@@ -862,7 +843,6 @@ Argument TEXT is a string containing the text to be formatted."
          l))
      sentences
      "\n")))
-
 
 (defun gpt-doc-forward-sexp (count)
   "Return the position after moving forward by COUNT balanced sexps.
@@ -935,7 +915,6 @@ Argument SEXP is the s-expression to be formatted."
                   nil t 1)
              (replace-match "()"))
            (buffer-string))))))
-
 
 (defun gpt-doc-get-prompt-for-args (sexp &optional related-sexps)
   "Generate user and system prompt for arguments of a given SEXP.
@@ -1031,8 +1010,6 @@ Argument TEXT is a string."
                 fns
                 (or (ignore-errors (funcall fn text))
                     text))))
-
-
 
 (defun gpt-doc-maybe-read (text)
   "Convert a string TEXT to a Lisp object if it's enclosed in quotes.
@@ -1134,8 +1111,6 @@ Optional argument RELATED-SEXPS is a list of related symbolic expressions
     (gpt-doc--debug-log "system-prompt for summary:\n\n%s\n" system-prompt)
     (cons user-prompt system-prompt)))
 
-
-
 (defun gpt-doc-get-short-documentation (sexp &optional related-sexps)
   "Generate a short documentation for a given Emacs Lisp function or macro.
 
@@ -1158,8 +1133,9 @@ that will be joined with the main SEXP for documentation generation."
     (when-let
         ((imp (and first-word
                    (boundp 'checkdoc-common-verbs-wrong-voice)
-                   (cdr (assoc-string (downcase first-word)
-                                      checkdoc-common-verbs-wrong-voice)))))
+                   (cdr (assoc-string
+                         (downcase first-word)
+                         checkdoc-common-verbs-wrong-voice)))))
       (setq first-word (capitalize (seq-copy imp))))
     (concat first-word " " (string-join parts " "))))
 
@@ -1436,7 +1412,6 @@ only shallow related definitions are included."
             (setq doc-pos (point))))))
     (and sexp doc-pos (cons sexp doc-pos))))
 
-
 (defun gpt-doc-fetch-models ()
   "Fetch and sort GPT models by creation time from OpenAI API."
   (let* ((url-request-method "GET")
@@ -1586,8 +1561,6 @@ flymake."
   (when (fboundp 'flymake-start)
     (flymake-start)))
 
-
-
 (defun gpt-doc-collect-doc-dups ()
   "Collect duplicate documentation strings from a given buffer."
   (let ((result)
@@ -1613,7 +1586,6 @@ flymake."
               (push doc result))))))
     dubs))
 
-
 (defun gpt-doc-jump-to-definition (doc-info)
   "Jump to the definition of a given document in the buffer.
 
@@ -1636,8 +1608,6 @@ Argument DOC-INFO is a list that contains information about the documentation."
     (when found
       (goto-char found))
     found))
-
-
 
 (defun gpt-doc-get-current-doc-info ()
   "Retrieve info about the current document element."
@@ -1663,8 +1633,6 @@ Argument DOC-INFO is a list that contains information about the documentation."
                           start
                           end))))))))
 
-
-
 (defun gpt-doc--stream-insert-response (response info)
   "Insert RESPONSE text at a specific buffer position.
 
@@ -1687,7 +1655,6 @@ information."
                              response)
           (goto-char tracking-marker)
           (gpt-doc-insert-with-fill (gpt-doc-escape-doc-str response)))))))
-
 
 (defun gpt-doc-insert-with-fill (response)
   "Insert text and format as a paragraph.
@@ -2024,8 +1991,6 @@ or region end is used."
                   (gpt-doc-after-change-hook info))
                 nil t))))
 
-
-
 (defun gpt-doc-arg-system-prompt (arg-user-prompt arg-system-prompt &optional
                                                   callback)
   "Insert and format GPT-generated Emacs Lisp documentation.
@@ -2123,7 +2088,6 @@ process is completed."
     (insert (propertize (prin1-to-string "") 'gpt-doc "gpt-doc"
                         'gpt-doc-old old-doc))
     (forward-char -1)))
-
 
 ;;;###autoload
 (defun gpt-doc-abort-all ()
@@ -2337,7 +2301,6 @@ When streaming, requests can be aborted with command `gpt-doc-abort-all'."
                #'gpt-doc-stream
              #'gpt-doc-document-current-function)
            (or (car-safe with-related-defs) 4)))
-
 
 ;;;###autoload
 (defun gpt-doc (&optional with-related-defs)
