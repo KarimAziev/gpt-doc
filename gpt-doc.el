@@ -84,8 +84,9 @@
 
 (declare-function url-host "url-parse")
 (declare-function json-encode "json")
-(declare-function auth-source-search "auth-source")
+(declare-function json-read "json")
 (declare-function json-read-from-string "json")
+(declare-function auth-source-search "auth-source")
 
 (require 'subr-x)
 
@@ -357,7 +358,6 @@ Return a cons cell containing the start and end positions of the defun sexp."
                          (gpt-doc-backward-up-list)))))
     result))
 
-(declare-function json-read "json")
 
 (defun gpt-doc-json--read-buffer (&optional object-type array-type null-object
                                             false-object)
