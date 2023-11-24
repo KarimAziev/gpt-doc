@@ -247,7 +247,7 @@ Return an updated version of collection COLL with the KEY removed."
             ("cl-defmacro" . 3)
             ("cl-defgeneric" . 3)
             ("cl-defmethod" . gpt-doc-forward-to-cl-defmethods-args)
-            ("defalias" . 4)
+            ("defalias" . 3)
             ("defhydra" . 4)
             ("define-widget" . 3)
             ("transient-define-suffix" . 3)
