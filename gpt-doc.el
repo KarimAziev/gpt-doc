@@ -1090,8 +1090,7 @@ Optional argument RELATED-SEXPS is a list of related symbolic expressions
                             "definition")
                         name))
          (user-prompt
-          (gpt-doc-make-code-prompt sexp (gpt-doc-join-sexps
-                                          related-sexps)))
+          (gpt-doc-make-code-prompt sexp related-sexps))
          (system-prompt
           (pcase (car sexp)
             ((or 'defvar 'defvar-local 'defcustom)
