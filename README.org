@@ -2,7 +2,7 @@
 
 * About
 
-=gpt-doc= is an Emacs library that allows you to document Elisp code using the GPT API. It provides functions to send code snippets to an external service and retrieve generated documentation, which is then automatically inserted into the correct place.
+=gpt-doc= is an Emacs library designed to automate the documentation of Elisp code by leveraging the capabilities of the GPT API. It offers a seamless interface for sending Elisp code snippets to an intelligent documentation generation service and then, upon receiving the AI-generated documentation, inserts it precisely at the appropriate location in your Emacs buffer.
 
 [[./gpt-doc.gif][./gpt-doc.gif]]
 
@@ -19,6 +19,7 @@
   - [[#as-a-predefined-authsource-function][As a predefined authsource function:]]
   - [[#as-a-custom-function][As a custom function]]
 - [[#usage][Usage]]
+  - [[#documentation-generation-process][Documentation Generation Process]]
   - [[#single-commands][Single commands]]
   - [[#batch-commands][Batch commands]]
 - [[#customization][Customization]]
@@ -71,7 +72,7 @@ Make sure that you have an [[https://platform.openai.com/account/api-keys][OpenA
 #+end_src
 
 ** As a predefined authsource function:
-Add the following entry to your auth sources file (typically =~/.authinfo.gpg= or =~/.authinfo=):
+Add the following entry to your authentication sources file, which is typically located at =~/.authinfo.gpg= or =~/.authinfo=.
 #+begin_example
 machine api.openai.com login apikey password YOUR_API_KEY_TOKEN
 #+end_example
@@ -82,7 +83,8 @@ And assign ~gpt-doc-api-key-from-auth-source~ to ~gpt-doc-api-key~:
 #+end_src
 
 ** As a custom function
- This function should return the API key.
+
+This function should return the API key.
 
  #+begin_src emacs-lisp
 (defun my-gpt-get-api-key ()
@@ -95,20 +97,31 @@ And assign ~gpt-doc-api-key-from-auth-source~ to ~gpt-doc-api-key~:
 
 * Usage
 
+** Documentation Generation Process
+
+#+BEGIN_QUOTE
+  [!IMPORTANT] When documenting a thing (function, variable, etc.), =gpt-doc= makes two separate requests to the GPT API to ensure high-quality and focused documentation:
+#+END_QUOTE
+
+- *Summary Sentence*: The first request generates a summary sentence that concisely describes the functionality.
+- *Arguments Description*: The second request provides documentation for each argument, detailing their purposes and usage.
+
+This two-request approach allows the GPT model to provide context-specific responses, resulting in accurate and well-formatted documentation.
+
+Active streaming requests can be managed using the command =gpt-doc-abort-all=, which terminates any ongoing documentation requests.
+
 ** Single commands
 
-Run at the beginning or inside the function to generate documentation:
+Run at the beginning or inside the function to generate and insert documentation:
 
 - =M-x gpt-doc=
 
-  Generate and insert documentation for a definition at the point.
+You can control the inclusion of related definitions for contextual richness with an optional prefix argument that influences the GPT system prompt:
 
-  Optional prefix argument determines whether to include related definitions in the GPT system prompt.
-
-    - If omitted, =gpt-doc-default-context-strategy= will be used as the default.
-    - If it is 1, no related definitions are included.
-    - If it is 4 (shallow), include related definitions that are directly used in the definition being documented (e.g., functions called within the function).
-    - If it is 16 (all), recursively include all related definitions, expanding the documentation context.
+  - With no prefix argument, the default behavior, as specified by =gpt-doc-default-context-strategy=, is used.
+  - A prefix argument of 1 includes no related definitions.
+  - A prefix argument of 4 includes shallow related definitions, such as directly used definitions within the thing being documented.
+  - A prefix argument of 16 includes all related definitions, providing the most comprehensive context by expanding the documentation to include nested related definitions.
 
   If custom variable =gpt-doc-use-stream= is non-nil, generate and insert the documentation piece by piece as it is available, otherwise perform a synchronous request. Active streaming requests can be aborted with the command =gpt-doc-abort-all=.
 
@@ -119,7 +132,7 @@ Run at the beginning or inside the function to generate documentation:
 
 ** Batch commands
 
-These commands operate on multiple definitions in the current buffer. They can be called with a prefix argument, which has the same meaning as in =gpt-doc=.
+These commands operate on multiple definitions in the current buffer. The context inclusion for batch commands follows the same logic as the single commands, augmenting the GPT system prompt with relevant definitions as per the specified prefix argument. They can be called with a prefix argument, which has the same meaning as in =gpt-doc=.
 
 Regardless of the value of =gpt-doc-use-stream=, they will stream the response (i.e., insert the documentation piece by piece as it becomes available).
 
@@ -137,7 +150,7 @@ Active streaming requests can be aborted with the command =gpt-doc-abort-all=.
 
 * Customization
 **** ~gpt-doc-gpt-model~
-You can set the OpenAI API model with =gpt-doc-gpt-model=. The default model is =gpt-3.5-turbo=, but the results are significantly better with =gpt-4=.
+You can set the OpenAI API model with =gpt-doc-gpt-model=. The default model is =gpt-4-1106-preview=.
 
 #+begin_src elisp
 (setq gpt-doc-gpt-model "gpt-4")
@@ -150,14 +163,13 @@ You can specify the OpenAI API endpoint with =gpt-doc-gpt-url=. The default endp
 (setq gpt-doc-gpt-url "https://api.openai.com/v1/chat/completions")
 #+end_src
 **** ~gpt-doc-gpt-temperature~
-You can customize the randomness of GPT-3's responses by setting =gpt-doc-gpt-temperature=. Lower values make the responses more deterministic, and higher values make them more random. The default value is 0.1.
+The temperature for the OpenAI GPT model used. Lower values make the responses more deterministic, and higher values make them more random. The default value is 0.1.
 #+begin_src elisp
 (setq gpt-doc-gpt-temperature 0.1)
 #+end_src
 **** ~gpt-doc-api-key~
-An OpenAI =api= key (string). Can also be a function of no arguments that returns an =api= key (more secure).
+An OpenAI =API= key (string). Can also be a function of no arguments that returns an =API= key (more secure).
 Temperature
-
 **** ~gpt-doc-use-stream~
 Whether to use streaming.
 **** ~gpt-doc-first-sentence-doc-prompt~
