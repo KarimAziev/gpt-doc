@@ -1,3 +1,10 @@
+* v0.4.0    2023-12-02
+
+- Add new command =gpt-doc-document-all-undocumented= to generate documentation for all undocumented definitions in the buffer.
+- Fix batching commands after switching in other window.
+- Update some prompts.
+- Add flymake backend for checking documentation duplicates.
+
 * v0.3.0    2023-11-19
 - Allow streaming without Curl.
 - Add custom variable =gpt-doc-default-context-strategy=, which is used as default argument for =gpt-doc= command.
