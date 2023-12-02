@@ -1833,7 +1833,7 @@ docstring diagnostics."
                                       (search-forward ":gpt-doc-flymake-output-start")
                                       (read (point-marker))))
                               (result (mapcar (lambda (it)
-                                                (apply 'flymake-make-diagnostic
+                                                (apply #'flymake-make-diagnostic
                                                        source-buffer
                                                        it))
                                               data)))
