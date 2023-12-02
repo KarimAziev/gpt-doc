@@ -19,6 +19,8 @@
   - [[#as-a-predefined-authsource-function][As a predefined authsource function:]]
   - [[#as-a-custom-function][As a custom function]]
 - [[#usage][Usage]]
+  - [[#single-commands][Single commands]]
+  - [[#batch-commands][Batch commands]]
 - [[#customization][Customization]]
 #+END_QUOTE
 
@@ -93,37 +95,45 @@ And assign ~gpt-doc-api-key-from-auth-source~ to ~gpt-doc-api-key~:
 
 * Usage
 
-- =M-x gpt-doc= (&optional with-related-defs)= ::
+** Single commands
+
+Run at the beginning or inside the function to generate documentation:
+
+- =M-x gpt-doc=
 
   Generate and insert documentation for a definition at the point.
 
-  The optional prefix argument determines whether to include related definitions:
+  Optional prefix argument determines whether to include related definitions in the GPT system prompt.
 
     - If omitted, =gpt-doc-default-context-strategy= will be used as the default.
     - If it is 1, no related definitions are included.
-    - If it is 4, shallow related definitions are included.
-    - If it is 16, all related definitions are included.
+    - If it is 4 (shallow), include related definitions that are directly used in the definition being documented (e.g., functions called within the function).
+    - If it is 16 (all), recursively include all related definitions, expanding the documentation context.
 
-    Use streaming if =gpt-doc-use-stream= is non-nil; otherwise, perform a synchronous request.
+  If custom variable =gpt-doc-use-stream= is non-nil, generate and insert the documentation piece by piece as it is available, otherwise perform a synchronous request. Active streaming requests can be aborted with the command =gpt-doc-abort-all=.
 
-    When streaming, requests can be aborted with the command =gpt-doc-abort-all=.
 
-- =M-x gpt-doc-with-context=
-    The same as =gpt-doc=, but by default, it includes shallow related definitions.
+- =M-x gpt-doc-with-context= Works the same as =gpt-doc=, but by default, it includes shallow related definitions.
 
-- =M-x gpt-doc-with-full-context=
-    The same as =gpt-doc=, but by default, it includes all related definitions.
+- =M-x gpt-doc-with-full-context= Works the same as =gpt-doc=, but by default, it includes all related definitions.
 
-- =M-x gpt-doc-redocument-all=
-    Redocument all definitions backward in the current buffer using stream.
-    An optional prefix argument WITH-RELATED-DEFS determines whether to include related definitions.
+** Batch commands
 
-- =M-x gpt-doc-abort-all=
-    Terminate the process associated with a buffer BUFF and delete its buffer.
-    The argument BUFF is the buffer in which the process to be aborted is running.
+These commands operate on multiple definitions in the current buffer. They can be called with a prefix argument, which has the same meaning as in =gpt-doc=.
+
+Regardless of the value of =gpt-doc-use-stream=, they will stream the response (i.e., insert the documentation piece by piece as it becomes available).
+
+Active streaming requests can be aborted with the command =gpt-doc-abort-all=.
 
 - =M-x gpt-doc-regenerate-dups=
-    Regenerate duplicate documentation in the buffer.
+    Regenerate documentation for definitions with duplicate documentation strings.
+
+- =M-x gpt-doc-document-all-undocumented=
+    Generate documentation for all undocumented definitions in the buffer.
+
+- =M-x gpt-doc-redocument-all=
+    Regenerate documentation for all definitions backward starting from the current one. If there is no suitable definition at the point, start from the last one in the buffer.
+
 
 * Customization
 **** ~gpt-doc-gpt-model~
@@ -149,7 +159,7 @@ An OpenAI =api= key (string). Can also be a function of no arguments that return
 Temperature
 
 **** ~gpt-doc-use-stream~
-Whether to use curl for streaming.
+Whether to use streaming.
 **** ~gpt-doc-first-sentence-doc-prompt~
 System prompt to generate first sentence of function documentation.
 **** ~gpt-doc-args-prompt~
