@@ -78,7 +78,7 @@
 (defvar url-request-data)
 (defvar url-request-extra-headers)
 (defvar url-http-end-of-headers)
-
+(defvar gpt-doc-load-filename (or load-file-name buffer-file-name))
 (declare-function url-host "url-parse")
 (declare-function json-encode "json")
 (declare-function json-read "json")
@@ -1502,20 +1502,22 @@ Argument MODEL is a string representing the API model for OpenAI."
                              (display-sort-function . ,display-sort-fn))
                          (complete-with-action action alist str pred))))))
 
-(defun gpt-doc-flymake-report-duplicate-docstrings (&optional report-fn &rest
-                                                              _args)
-  "Detect duplicate docstrings in code.
 
-Optional argument REPORT-FN is a function that will be called with the list of
-duplicated documentation diagnostics."
-  (let ((result)
-        (dups)
-        (buff (current-buffer)))
-    (save-excursion
-      (save-restriction
-        (widen)
+(defun gpt-doc-flymake-duplicate-docstrings-in-file (&optional file)
+  "Detect and print duplicate docstrings in a FILE.
+
+If FILE is not provided, the current buffer's FILE is used."
+  (interactive (list buffer-file-name))
+  (let* ((file (or file
+                   (car command-line-args-left)))
+         (result)
+         (dups))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (let ((emacs-lisp-mode-hook nil))
+        (emacs-lisp-mode)
         (goto-char (point-max))
-        (while (and (gpt-doc-move-with 'backward-sexp)
+        (while (and (gpt-doc-move-with #'backward-sexp)
                     (looking-at "[(]"))
           (pcase-let* ((doc (gpt-doc-get-current-doc-info))
                        (`(,_type ,_name ,doc-str ,beg ,end)
@@ -1530,19 +1532,86 @@ duplicated documentation diagnostics."
                                  result))))
                 (when (and dup-beg dup-end)
                   (let ((diag-a
-                         (flymake-make-diagnostic buff
-                                                  dup-beg dup-end
-                                                  :note "Duplicated docstring"))
+                         (list dup-beg dup-end :note "Duplicated docstring"))
                         (diag-b
-                         (flymake-make-diagnostic buff
-                                                  beg end
-                                                  :note
-                                                  "Duplicated docstring")))
+                         (list beg end :note "Duplicated docstring")))
                     (push diag-a dups)
                     (push diag-b dups))))
               (push doc result))))))
-    (when report-fn
-      (funcall report-fn dups))))
+    (prin1 :gpt-doc-flymake-output-start)
+    (terpri)
+    (pp dups)))
+
+(defvar-local gpt-doc--flymake-process nil
+  "Buffer-local process started for checking duplicate docstrings in the buffer.")
+
+(defun gpt-doc-flymake-report-duplicate-docstrings (&optional report-fn &rest
+                                                              _args)
+  "Detect and report duplicate docstrings.
+
+Optional argument REPORT-FN is a function to call with the list of duplicate
+docstring diagnostics."
+  (when gpt-doc--flymake-process
+    (when (process-live-p gpt-doc--flymake-process)
+      (kill-process gpt-doc--flymake-process)))
+  (let ((temp-file (make-temp-file "gpt-doc-flymake-check-dups"))
+        (source-buffer (current-buffer))
+        (coding-system-for-write 'utf-8-unix)
+        (coding-system-for-read 'utf-8))
+    (save-restriction
+      (widen)
+      (write-region (point-min)
+                    (point-max) temp-file nil 'nomessage))
+    (let*
+        ((output-buffer (generate-new-buffer " *gpt-doc-flymake-check-dups*")))
+      (setq gpt-doc--flymake-process
+            (make-process
+             :name "gpt-doc-flymake-check-dups"
+             :buffer output-buffer
+             :command `(,(expand-file-name invocation-name invocation-directory)
+                        "-Q"
+                        "--batch"
+                        ;; "--eval" "(setq load-prefer-newer t)"
+                        "-l" ,gpt-doc-load-filename
+                        "-f" "gpt-doc-flymake-duplicate-docstrings-in-file"
+                        ,temp-file)
+             :connection-type 'pipe
+             :sentinel
+             (lambda (proc _event)
+               (unless (process-live-p proc)
+                 (unwind-protect
+                     (cond
+                      ((not (and (buffer-live-p source-buffer)
+                                 (eq proc (with-current-buffer source-buffer
+                                            gpt-doc--flymake-process))))
+                       (flymake-log :warning
+                                    "gpt-doc process %s obsolete" proc))
+                      ((zerop (process-exit-status proc))
+                       (let* ((data (with-current-buffer output-buffer
+                                      (goto-char (point-min))
+                                      (search-forward ":gpt-doc-flymake-output-start")
+                                      (read (point-marker))))
+                              (result (mapcar (lambda (it)
+                                                (apply 'flymake-make-diagnostic
+                                                       source-buffer
+                                                       it))
+                                              data)))
+                         (if report-fn
+                             (funcall report-fn result)
+                           (message "gpt-doc %s" result)
+                           nil)))
+                      (t
+                       (if report-fn
+                           (funcall report-fn
+                                    :panic
+                                    :explanation
+                                    (format "gpt-doc process %s died" proc))
+                         (message (format "gpt-doc process %s died" proc)))))
+                   (ignore-errors (delete-file temp-file))
+                   (kill-buffer output-buffer))))
+             :stderr " *stderr of gpt-doc-flymake-check-dups*"
+             :noquery t)))))
+
 
 (defun gpt-doc-flymake-init ()
   "Initialize GPT-doc Flymake for duplicate docstring checking."
