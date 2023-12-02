@@ -676,6 +676,18 @@ Argument STR is the string to upcase arguments in."
               (when (and mbeg-dub mend-dub)
                 (downcase-region mbeg-dub mend-dub)))))))))
 
+(defun gpt-doc-fix-whitespace-end ()
+  "Remove white space at end of the lines."
+  (pcase-let ((`(,_type ,_name ,_str ,beg ,end)
+               (gpt-doc-get-current-doc-info)))
+    (when (and beg end)
+      (save-excursion
+        (goto-char (1- end))
+        (while (re-search-backward
+                "[^ \t\n;]\\([ \t]+\\)$"
+                (1+ beg) t 1)
+          (replace-match "" nil nil nil 1))))))
+
 (defun gpt-doc-highlight-doc ()
   "Highlight documentation for the thing at point."
   (require 'pulse nil t)
@@ -700,26 +712,37 @@ Argument STR is the string to upcase arguments in."
     (when (and beg end)
       (remove-text-properties beg end '(gpt-doc t gpt-old-doc t)))))
 
+
+
 (defun gpt-doc-restore-text-props ()
   "Restore old text properties after removing `gpt-doc' props."
-  (pcase-let* ((`(,beg . ,end)
+  (pcase-let* ((`(,sbeg . ,send)
                 (gpt-doc-elisp-bounds-of-def-sexp))
                (found
-                (when (and beg end)
-                  (next-single-property-change beg 'gpt-doc-old nil end)))
-               (value (get-text-property found 'gpt-doc-old)))
-    (when value
-      (remove-text-properties beg end '(gpt-doc t gpt-old-doc t))
-      (goto-char found)
-      (if (not (looking-at "\""))
-          (insert value)
-        (when-let ((doc-end (gpt-doc-forward-sexp 1)))
-          (delete-region found doc-end)
-          (insert value))))))
+                (when (and sbeg send)
+                  (save-excursion
+                    (goto-char sbeg)
+                    (save-restriction
+                      (narrow-to-region sbeg send)
+                      (text-property-search-forward
+                       'gpt-doc-old)))))
+               (beg (and found (prop-match-beginning found)))
+               (value (and found
+                           (get-text-property beg 'gpt-doc-old))))
+    (when (and sbeg send)
+      (remove-text-properties sbeg send '(gpt-doc t gpt-old-doc t)))
+    (when beg
+      (goto-char beg)
+      (delete-region beg (gpt-doc-forward-sexp 1))
+      (when (stringp value)
+        (insert value)))))
 
 (defvar gpt-doc-normalize-fns '(gpt-doc-fix-arg-case
                                 gpt-doc-escape-doc
-                                gpt-doc-fix-symbols-quotes))
+                                gpt-doc-fix-symbols-quotes
+                                gpt-doc-fix-whitespace-end
+                                gpt-doc-refill)
+  "List of functions for normalizing documentation strings.")
 
 (defun gpt-doc-point-visible (pos)
   "Check if position is visible in window.
@@ -738,20 +761,46 @@ Argument POS is the buffer position to check for visibility within the window."
     (when (and beg end)
       (run-hook-with-args 'after-change-functions beg end 0))))
 
+(defun gpt-doc-refill ()
+  "Refill paragraphs in a docstring that exceed 80 characters."
+  (pcase-let ((`(,_type ,_name ,_str ,beg ,end)
+               (gpt-doc-get-current-doc-info))
+              (done))
+    (when (and beg end)
+      (goto-char (1+ beg))
+      (while
+          (and (not done)
+               (progn (goto-char (line-end-position))
+                      (or (nth 3 (syntax-ppss (point)))
+                          (when (nth 3 (syntax-ppss (1- (point))))
+                            (setq done t)))))
+        (when-let ((start (and (> (current-column) 80)
+                               (save-excursion
+                                 (progn
+                                   (forward-paragraph -1)
+                                   (when (nth 3 (syntax-ppss (point)))
+                                     (point)))))))
+          (let ((send (save-excursion
+                        (forward-paragraph 1)
+                        (when (nth 3 (syntax-ppss (point)))
+                          (point)))))
+            (unless send
+              (setq send (ignore-errors (goto-char (nth 8 (syntax-ppss
+                                                           (point))))
+                                        (when (gpt-doc-forward-sexp
+                                               1)
+                                          (forward-char -1)
+                                          (point)))))
+            (goto-char send)
+            (fill-region start send)))
+        (forward-line 1)))))
 ;;;###autoload
 (defun gpt-doc-post-fix ()
   "Normalize and highlight documentation text."
   (interactive)
   (run-hooks 'gpt-doc-normalize-fns)
-  (pcase-let ((`(,_type ,_name ,_str ,beg ,end)
-               (gpt-doc-get-current-doc-info)))
-    (when (and beg end)
-      (save-excursion
-        (goto-char (1+ beg))
-        (fill-region beg end)
-        (goto-char beg))
-      (gpt-doc-highlight-doc)
-      (gpt-doc-run-after-change-hook))))
+  (gpt-doc-highlight-doc)
+  (gpt-doc-run-after-change-hook))
 
 (defun gpt-doc-escape-doc-str (str)
   "Escape open parentheses and unescaped single and double quotes in STR."
@@ -1703,16 +1752,22 @@ Argument DOC-INFO is a list that contains information about the documentation."
                           start
                           end))))))))
 
+(defun gpt-doc-curr-sexp-documented-p ()
+  "Check if current s-expression has a docstring."
+  (pcase-let ((`(,item-type ,_n ,doc ,_end)
+               (gpt-doc-get-current-doc-info)))
+    (and item-type (stringp doc))))
+
 (defun gpt-doc--stream-insert-response (response info)
-  "Insert RESPONSE text at a specific buffer position.
+  "Insert and format RESPONSE text at a marker.
 
-Argument RESPONSE is a string containing the server's response to be inserted
-into the buffer.
+Argument RESPONSE is a string containing the server's response.
 
-Argument INFO is a property list containing insertion position and tracking
+Argument INFO is a property list containing the insertion position and tracking
 information."
   (let ((start-marker (plist-get info :position))
-        (tracking-marker (plist-get info :tracking-marker)))
+        (tracking-marker (plist-get info :tracking-marker))
+        (inhibit-modification-hooks t))
     (when response
       (with-current-buffer (marker-buffer start-marker)
         (save-excursion
@@ -1726,18 +1781,19 @@ information."
           (goto-char tracking-marker)
           (gpt-doc-insert-with-fill (gpt-doc-escape-doc-str response)))))))
 
+
 (defun gpt-doc-insert-with-fill (response)
   "Insert text and format as a paragraph.
 
 Argument RESPONSE is a string to be inserted and potentially filled within the
 buffer."
-  (let* ((beg
-          (let ((line-beg (line-beginning-position)))
-            (save-excursion
-              (goto-char line-beg)
-              (if (looking-at "[\s\t]*\"")
-                  (re-search-forward "[\s\t]*\"" nil t 1)
-                line-beg))))
+  (let* ((line-beg (line-beginning-position))
+         (first-sentence-start (save-excursion
+                                 (goto-char line-beg)
+                                 (when (looking-at "[\s\t]*\"")
+                                   (re-search-forward "[\s\t]*\"" nil t 1))))
+         (beg
+          (or first-sentence-start line-beg))
          (pos (point))
          (chunk
           (cond ((and (= beg pos)
@@ -1749,14 +1805,24 @@ buffer."
          (wid (string-width (concat
                              curr-content
                              chunk))))
-    (cond ((or (<= wid 80)
-               (string-prefix-p "\n" chunk))
+    (cond ((and (string-prefix-p "\n" chunk)
+                (or (string-suffix-p " " curr-content)
+                    (string-suffix-p "\t" curr-content)))
+           (delete-char (save-excursion
+                          (skip-chars-backward "\s\t")))
+           (insert chunk))
+          ((or
+            first-sentence-start
+            (<= wid 80)
+            (string-prefix-p "\n" chunk))
            (insert chunk))
           ((string-suffix-p " " curr-content)
            (delete-char (save-excursion
                           (skip-chars-backward " ")))
            (insert "\n" chunk))
           ((string-prefix-p " " chunk)
+           (delete-char (save-excursion
+                          (skip-chars-backward " ")))
            (insert "\n" (string-trim-left chunk)))
           (t (insert chunk)))))
 
