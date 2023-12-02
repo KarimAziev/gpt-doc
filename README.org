@@ -99,9 +99,8 @@ This function should return the API key.
 
 ** Documentation Generation Process
 
-#+BEGIN_QUOTE
-  [!IMPORTANT] When documenting a thing (function, variable, etc.), =gpt-doc= makes two separate requests to the GPT API to ensure high-quality and focused documentation:
-#+END_QUOTE
+#+begin_quote
+When documenting a thing (function, variable, etc.), =gpt-doc= makes two separate requests to the GPT API to ensure high-quality and focused documentation:
 
 - *Summary Sentence*: The first request generates a summary sentence that concisely describes the functionality.
 - *Arguments Description*: The second request provides documentation for each argument, detailing their purposes and usage.
@@ -109,6 +108,7 @@ This function should return the API key.
 This two-request approach allows the GPT model to provide context-specific responses, resulting in accurate and well-formatted documentation.
 
 Active streaming requests can be managed using the command =gpt-doc-abort-all=, which terminates any ongoing documentation requests.
+#+end_quote
 
 ** Single commands
 
