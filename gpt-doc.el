@@ -2147,14 +2147,15 @@ Argument INFO is a property list containing various request-related data."
                                    (plist-get info
                                               :position)))
                               (with-current-buffer buffer
-                                (when tracking-marker
-                                  (goto-char tracking-marker))
-                                (when final-callback
-                                  (funcall
-                                   final-callback))
-                                (when start-marker
-                                  (goto-char start-marker))
-                                (gpt-doc-remove-text-props)
+                                (save-excursion
+                                  (when tracking-marker
+                                    (goto-char tracking-marker))
+                                  (when final-callback
+                                    (funcall
+                                     final-callback))
+                                  (when start-marker
+                                    (goto-char start-marker))
+                                  (gpt-doc-remove-text-props))
                                 (setq gpt-doc--request-url-buffers
                                       (assq-delete-all
                                        (plist-get info :request-buffer)
