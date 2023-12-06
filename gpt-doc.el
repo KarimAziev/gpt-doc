@@ -2260,11 +2260,8 @@ be inserted. It can be a marker, an integer, or nil. If nil, the current point
 or region end is used."
   (let* ((buffer (or buffer (current-buffer)))
          (start-marker
-          (cond ((null position)
-                 (if (use-region-p)
-                     (set-marker (make-marker)
-                                 (region-end))
-                   (point-marker)))
+          (cond ((not position)
+                 (point-marker))
                 ((markerp position) position)
                 ((integerp position)
                  (set-marker (make-marker) position buffer))))
