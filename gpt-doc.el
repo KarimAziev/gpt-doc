@@ -1872,10 +1872,10 @@ flymake."
   (when (fboundp 'flymake-start)
     (flymake-start)))
 
+
 (defun gpt-doc-collect-doc-dups ()
   "Collect duplicate documentation strings from a given buffer."
-  (let ((result)
-        (dubs))
+  (let ((alist))
     (save-excursion
       (save-restriction
         (widen)
@@ -1883,19 +1883,18 @@ flymake."
         (while (and (gpt-doc-move-with #'backward-sexp)
                     (looking-at "[(]"))
           (pcase-let* ((doc (gpt-doc-get-current-doc-info))
-                       (`(,_type ,_name ,doc-str ,_beg ,_end)
+                       (`(,_type ,_name ,doc-str ,beg ,_end)
                         doc))
-            (when doc
-              (when-let ((found (and doc-str
-                                     (seq-find
-                                      (pcase-lambda
-                                        (`(,_k ,_n ,str . _rest))
-                                        (and str (string= str doc-str)))
-                                      result))))
-                (push found dubs)
-                (push doc dubs))
-              (push doc result))))))
-    dubs))
+            (when (and doc doc-str beg
+                       (not (get-text-property (1+ beg) 'gpt-doc)))
+              (if-let ((cell (assoc-string doc-str alist)))
+                  (setcdr cell (append (cdr cell)
+                                       (list doc)))
+                (let ((cell (cons doc-str (list doc))))
+                  (push cell alist))))))))
+    (seq-filter (pcase-lambda (`(,_k . ,v))
+                  (> (length v) 1))
+                alist)))
 
 (defun gpt-doc-jump-to-definition (doc-info)
   "Jump to the definition of a given document in the buffer.
@@ -2506,15 +2505,23 @@ will be used as default.
 - If WITH-RELATED-DEFS is 16 (all), recursively include all related definitions,
   expanding the documentation context."
   (interactive "P")
-  (let ((dubs (gpt-doc-collect-doc-dups))
-        (dup))
-    (while (setq dup (pop dubs))
-      (when (gpt-doc-jump-to-definition dup)
-        (unless (gpt-doc-active-p)
-          (setq dubs nil)
+  (let* ((buffer (current-buffer))
+         (markers (mapcar (pcase-lambda
+                            (`(,_type ,_name ,_doc-str ,beg ,_end))
+                            (set-marker (make-marker) beg buffer))
+                          (cdar (gpt-doc-collect-doc-dups))))
+         (marker))
+    (save-excursion
+      (while (setq marker (pop markers))
+        (goto-char marker)
+        (let ((callback
+               (unless markers
+                 (lambda ()
+                   (gpt-doc-regenerate-dups
+                    with-related-defs)))))
           (gpt-doc-stream (or (car-safe with-related-defs)
                               gpt-doc-default-context-strategy)
-                          #'gpt-doc-regenerate-dups))))))
+                          callback))))))
 
 
 ;;;###autoload
