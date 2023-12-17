@@ -1,3 +1,9 @@
+* v0.5.0    2023-12-17
+- Add checkdoc integration and improve debug logging
+- Implement =gpt-doc-mode= to abort requests with multiple =keyboard-quit= presses.
+- Introduce a new customizable variable =gpt-doc-abort-on-keyboard-quit-count= to specify the number of =keyboard-quit= presses needed to abort active GPT documentation requests.
+- Fix duplicate docs batch handling.
+
 * v0.4.0    2023-12-02
 
 - Add new command =gpt-doc-document-all-undocumented= to generate documentation for all undocumented definitions in the buffer.
