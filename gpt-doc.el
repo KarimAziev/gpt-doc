@@ -266,6 +266,23 @@ Return an updated version of collection COLL with the KEY removed."
   :group 'gpt-doc
   :type 'string)
 
+(defcustom gpt-doc-abort-on-keyboard-quit-count 3
+  "Number of `keyboard-quit' presses before aborting GPT documentation requests.
+
+Determines the number of consecutive `keyboard-quit' commands needed to abort an
+active streaming request.
+
+The default value is 3, meaning that pressing `keyboard-quit' three times in
+quick succession will abort the request.
+
+This variable is only effective when `gpt-doc-use-stream' is non-nil, as it
+applies to streaming requests.
+
+If the number of `keyboard-quit' commands does not reach the set threshold, the
+abort action will not be triggered."
+  :group 'gpt-doc
+  :type 'integer)
+
 
 
 (defcustom gpt-doc-docstring-positions (list
@@ -2234,6 +2251,46 @@ Argument TEXT is a string to be displayed in the error popup buffer."
                          (lambda ()
                            (when (fboundp 'visual-line-mode)
                              (visual-line-mode 1)))))
+
+
+
+(defvar-local gpt-doc--bus nil)
+
+(defun gpt-doc-command-watcher ()
+  "Monitor `keyboard-quit' commands and handle GPT documentation aborts."
+  (cond ((and gpt-doc--request-url-buffers
+              (eq this-command 'keyboard-quit))
+         (push this-command gpt-doc--bus)
+         (let ((len (length gpt-doc--bus)))
+           (cond ((>= len gpt-doc-abort-on-keyboard-quit-count)
+                  (message  "gpt-doc: Aborting")
+                  (setq gpt-doc--bus nil)
+                  (gpt-doc-abort-all))
+                 ((< len gpt-doc-abort-on-keyboard-quit-count)
+                  (message
+                   (substitute-command-keys
+                    "gpt-doc: Press `\\[keyboard-quit]' %d more times to force interruption.")
+                   (- gpt-doc-abort-on-keyboard-quit-count len))))))
+        (gpt-doc--bus (setq gpt-doc--bus nil))))
+
+;;;###autoload
+(define-minor-mode gpt-doc-mode
+  "Toggle monitoring `keyboard-quit' commands for aborting GPT requests.
+
+Enable `gpt-doc-mode' to monitor and handle `keyboard-quit' commands for
+aborting GPT documentation requests.
+
+When active, pressing `keyboard-quit' multiple times can trigger the
+cancellation of ongoing documentation generation processes.
+
+See also custom variable `gpt-doc-abort-on-keyboard-quit-count' for exact
+number of `keyboard-quit' presses to abort."
+  :lighter " gpt-doc"
+  :global nil
+  (if gpt-doc-mode
+      (add-hook 'post-command-hook #'gpt-doc-command-watcher nil 'local)
+    (remove-hook 'post-command-hook #'gpt-doc-command-watcher 'local)))
+
 
 
 (defun gpt-doc-stream-request (user-prompt system-prompt &optional
