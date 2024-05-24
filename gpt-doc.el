@@ -85,6 +85,7 @@
 (defvar url-request-extra-headers)
 (defvar url-http-end-of-headers)
 (defvar gpt-doc-load-filename (or load-file-name buffer-file-name))
+
 (declare-function url-host "url-parse")
 (declare-function json-encode "json")
 (declare-function json-read "json")
@@ -192,7 +193,6 @@ Current keyboard macro counter."
   :group 'gpt-doc
   :type 'string)
 
-
 (defcustom gpt-doc-first-sentence-doc-prompt "The user will provide you an Emacs Lisp code.
 Write a very short sentence that starts with imperative verb about what the %s below does in maximum *75* characters.
 Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", in `%s' and so on.
@@ -255,6 +255,50 @@ represent a JSON false value.  It defaults to `:false'."
   :group 'gpt-doc
   :type 'string)
 
+(defcustom gpt-doc-special-prompts (list
+                                    (cons 'defcustom "Write a documentation for the custom variable %s, describe the type, and how to use it
+without any additional text, prompt, note or the source code. Your text will be inserted as
+documentation string in this variables, so follow Emacs rules.
+
+Sentences should be separated by two newline characters.
+1. Do NOT wrap the start and end of your text in quotes.
+2. Don't mention the name of this variable.
+2. Make sure that your text doesn't exceed 70 columns in width.
+3. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", \"this variable\", \"customization group\",
+\"you\", :group, :type and so on.
+
+Failure to comply with these rules will result in an error.
+
+Example:
+
+A list of sections to extract from `package.json' when evaluating
+JavaScript projects. The default sections are \"dependencies\",
+\"devDependencies\", and \"peerDependencies\".
+
+Each element in the list should be a string representing a key in the
+`package.json' file that corresponds to a section containing module
+dependencies.")
+                                    (cons 'defgroup "Write a documentation string for the custom group %s without any additional text, prompt, note or the source code.
+Your text will be inserted as documentation string in this variables, so follow Emacs rules.
+
+Sentences should be separated by two newline characters.
+1. Do NOT wrap the start and end of your text in quotes.
+2. Don't mention the name of this variable.
+2. Make sure that your text doesn't exceed 70 columns in width.
+3. Don't use phrases like \"defines\", \"in Emacs\", \"in Emacs Lisp\", \"this variable\", \"customization group\",
+\"you\", :group, :type and so on.")
+                                    (cons 'define-minor-mode
+                                          "Write a documentation string for the minor mode %s using imperative verb about what the %s below does. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", in `%s' and so on. Write only documnentation string and only documentation string. Do NOT wrap the start and end of your text in quotes.")
+                                    (cons 'define-derived-mode
+                                          "Write a documentation string for the derivered mode %s using imperative verb about what the %s below does. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", in `%s' and so on. Write only documnentation string and only documentation string. Do NOT wrap the start and end of your text in quotes."))
+  "Alist of definition types and corresponding addional prompts.
+
+In prompts %s occurences will be substituted with the name of sexp to document."
+  :type '(alist
+          :key-type (symbol :tag "Symbol")
+          :value-type (string :tag "Prompt"))
+  :group 'gpt-doc)
+
 (defcustom gpt-doc-return-type-prompt "Write description using only imperative verbs about the structure of result of calling the function %s. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\" and so on. Don't mention the function name. Do NOT wrap the start and end of your text in quotes.
 
 Examples:
@@ -288,13 +332,27 @@ abort action will not be triggered."
   :group 'gpt-doc
   :type 'integer)
 
+(defcustom gpt-doc-allow-abort-mode nil
+  "Flag to permit cancellation of ongoing documentation streaming.
 
+Determines whether to enable `gpt-doc-mode' to monitor and handle
+`keyboard-quit' commands for aborting GPT documentation requests during the
+streaming of documentation.
+
+When non-nil, pressing `\\[keyboard-quit]' multiple times can trigger the
+cancellation of ongoing documentation generation processes.
+
+See also custom variable `gpt-doc-abort-on-keyboard-quit-count' for exact
+number of `keyboard-quit' presses to abort."
+  :group 'gpt-doc
+  :type 'boolean)
 
 (defcustom gpt-doc-docstring-positions (list
                                         (cons 'defun 3)
                                         (cons 'defmacro 3)
                                         (cons 'defsubst 3)
                                         (cons 'defcustom 3)
+                                        (cons 'defgroup 3)
                                         (cons 'define-skeleton 2)
                                         (cons 'define-compilation-mode 3)
                                         (cons 'define-minor-mode 2)
@@ -307,6 +365,7 @@ abort action will not be triggered."
                                         (cons 'cl-defmethod
                                               'gpt-doc-forward-to-cl-defmethods-args)
                                         (cons 'defalias 3)
+                                        (cons 'defvar-local 3)
                                         (cons 'defvar 3)
                                         (cons 'defconst 3)
                                         (cons 'defhydra 4)
@@ -332,8 +391,10 @@ return number to move forward across."
                                  (cons 'defmacro "macro")
                                  (cons 'defsubst "inline function")
                                  (cons 'defcustom "custom variable")
+                                 (cons 'defgroup "customization group")
                                  (cons 'define-skeleton "skeleton")
-                                 (cons 'define-compilation-mode "compilation mode")
+                                 (cons 'define-compilation-mode
+                                       "compilation mode")
                                  (cons 'define-minor-mode "minor mode")
                                  (cons 'define-derived-mode "major mode")
                                  (cons 'define-generic-mode "generic mode")
@@ -345,9 +406,12 @@ return number to move forward across."
                                  (cons 'defalias "alias")
                                  (cons 'defhydra "hydra")
                                  (cons 'define-widget "widget")
-                                 (cons 'transient-define-suffix "transient suffix command")
-                                 (cons 'transient-define-argument "transient argument command")
-                                 (cons 'transient-define-prefix "transient prefix")
+                                 (cons 'transient-define-suffix
+                                       "transient suffix command")
+                                 (cons 'transient-define-argument
+                                       "transient argument command")
+                                 (cons 'transient-define-prefix
+                                       "transient prefix")
                                  (cons 'ert-deftest "test"))
   "An alist that maps definition types to their respective documentation labels."
   :group 'gpt-doc
@@ -662,7 +726,7 @@ Argument SEXP is the function/macro definition sexp."
                    gpt-doc-docstring-positions)
              (not (memq (car sexp)
                         '(defcustom defvar defvar-keymap
-                           defconst))))
+                           defvar-local defconst))))
     (let ((args (seq-find #'proper-list-p sexp)))
       (let (elems)
         (if (catch 'not-arg
@@ -824,8 +888,6 @@ Argument STR is the string to upcase arguments in."
     (when (and beg end)
       (remove-text-properties beg end '(gpt-doc t gpt-old-doc t)))))
 
-
-
 (defun gpt-doc-restore-text-props ()
   "Restore old text properties after removing `gpt-doc' props."
   (pcase-let* ((`(,sbeg . ,send)
@@ -851,6 +913,7 @@ Argument STR is the string to upcase arguments in."
 
 (defvar checkdoc-autofix-flag)
 (defvar checkdoc-syntax-table)
+(defvar checkdoc-bouncy-flag)
 (defvar checkdoc-spellcheck-documentation-flag)
 
 (declare-function checkdoc-this-string-valid-engine "checkdoc")
@@ -865,6 +928,7 @@ Argument STR is the string to upcase arguments in."
       (save-excursion
         (goto-char beg)
         (let ((checkdoc-autofix-flag 'automatic)
+              (checkdoc-bouncy-flag nil)
               (checkdoc-spellcheck-documentation-flag nil)
               (beginning-of-defun-function (lambda ()
                                              (pcase-let
@@ -881,7 +945,8 @@ Argument STR is the string to upcase arguments in."
                                 gpt-doc-fix-symbols-quotes
                                 gpt-doc-fix-whitespace-end
                                 gpt-doc-refill
-                                gpt-doc-checkdoc-fix)
+                                gpt-doc-checkdoc-fix
+                                gpt-doc-refill-list-items)
   "List of functions for normalizing documentation strings.")
 
 (defun gpt-doc-point-visible (pos)
@@ -901,6 +966,22 @@ Argument POS is the buffer position to check for visibility within the window."
     (when (and beg end)
       (run-hook-with-args 'after-change-functions beg end 0))))
 
+(defun gpt-doc-refill-list-items ()
+  "Refill list items in a documentation string."
+  (pcase-let ((`(,_type ,_name ,_str ,beg ,end)
+               (gpt-doc-get-current-doc-info)))
+    (when (and beg end)
+      (goto-char end)
+      (while (re-search-backward "[.:]\\(\n+\\)-" beg t 1)
+        (save-excursion
+          (forward-char 1)
+          (replace-match "" nil nil nil 1)
+          (newline 2)
+          (let ((list-start (point)))
+            (forward-sentence)
+            (fill-region list-start
+                         (point))))))))
+
 (defun gpt-doc-refill ()
   "Refill paragraphs in a docstring that exceed 80 characters."
   (pcase-let ((`(,_type ,_name ,_str ,beg ,end)
@@ -914,7 +995,7 @@ Argument POS is the buffer position to check for visibility within the window."
                       (or (nth 3 (syntax-ppss (point)))
                           (when (nth 3 (syntax-ppss (1- (point))))
                             (setq done t)))))
-        (when-let ((start (and (> (current-column) 80)
+        (when-let ((start (and (>= (current-column) 80)
                                (save-excursion
                                  (progn
                                    (forward-paragraph -1)
@@ -991,8 +1072,6 @@ Argument POS is the buffer position to check for visibility within the window."
                 (replace-match symb)
               (replace-match (concat "`" symb "'")))))))))
 
-
-
 (defun gpt-doc--unqote-response-args (response)
   "Return a modified version of the input string with backquoted symbols unquoted.
 Argument RESPONSE is the input string to be modified."
@@ -1060,14 +1139,6 @@ Argument SEXP is the s-expression to search for proper lists."
        (seq-position sexp nil (lambda (a &rest _)
                                 (proper-list-p a)))))
 
-(defun gpt-doc-first-doc-pos (sexp)
-  "Return the position of documentation string after args lists in the given SEXP.
-Argument SEXP is the s-expression to search for the documentation string."
-  (when-let* ((arg-pos (gpt-doc-first-list-pos sexp))
-              (doc (nth (1+ arg-pos) sexp)))
-    (and (stringp doc)
-         (1+ arg-pos))))
-
 (defun gpt-doc-remove-doc-string (sexp)
   "Return a modified version of the input SEXP with the doc string removed.
 Argument SEXP is the s-expression to remove the doc string from."
@@ -1117,39 +1188,9 @@ Argument SEXP is the symbolic expression to analyze.
 
 Return the final system prompt string with all necessary substitutions made."
   (when-let ((args
-              (pcase (car sexp)
-                ('defcustom "Write a documentation for the custom variable %s, describe the type, and how to use it
-without any additional text, prompt, note or the source code. Your text will be inserted as
-documentation string in this variables, so follow Emacs rules.
-
-Sentences should be separated by two newline characters.
-1. Do NOT wrap the start and end of your text in quotes.
-2. Don't mention the name of this variable.
-2. Make sure that your text doesn't exceed 70 columns in width.
-3. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", \"this variable\", \"customization group\",
-\"you\", :group, :type and so on.
-
-Failure to comply with these rules will result in an error.
-
-Example:
-
-A list of sections to extract from `package.json' when evaluating
-JavaScript projects. The default sections are \"dependencies\",
-\"devDependencies\", and \"peerDependencies\".
-
-Each element in the list should be a string representing a key in the
-`package.json' file that corresponds to a section containing module
-dependencies.")
-                ((or 'define-minor-mode 'define-derived-mode)
-                 "Write a documentation string for %s using imperative verb about what the %s below does. Don't use phrases like \"in Emacs\", \"in Emacs Lisp\", in `%s' and so on. Write only documnentation string and only documentation string. Do NOT wrap the start and end of your text in quotes.")
-                ((or 'defvar 'defvar-local))
-                (_
-                 (gpt-doc-get-args-names sexp)))))
-    (let* ((name (cadr sexp))
-           (label (format "%s `%s'"
-                          (or (cdr (assq (car sexp) gpt-doc-prompt-types))
-                              "definition")
-                          name))
+              (or (cdr (assq (car sexp) gpt-doc-special-prompts))
+                  (gpt-doc-get-args-names sexp))))
+    (let* ((name (format "%s" (cadr sexp)))
            (system (if (stringp args)
                        args
                      gpt-doc-args-prompt))
@@ -1157,11 +1198,7 @@ dependencies.")
                      (gpt-doc-get-matches "%s" system))))
       (if (zerop matches)
           system
-        (apply #'format system (mapcar (lambda (it)
-                                         (pcase it
-                                           (0 label)
-                                           (_ name)))
-                                       (number-sequence 0 matches)))))))
+        (replace-regexp-in-string "%s" name system)))))
 
 (defun gpt-doc-get-prompt-for-args (sexp &optional related-sexps)
   "Generate user and system prompt for arguments of a given SEXP.
@@ -1174,7 +1211,8 @@ Optional argument RELATED-SEXPS is a list of Lisp expressions related to SEXP."
               (user-prompt (gpt-doc-make-code-prompt
                             sexp
                             related-sexps)))
-    (let ((inhibit-message t))
+    (let ((inhibit-message t)
+          (message-log-max))
       (and related-sexps
            (message "gpt-doc: sending context %s" (length related-sexps))))
     (cons user-prompt system-prompt)))
@@ -1334,12 +1372,11 @@ that will be joined with the main SEXP for documentation generation."
                             sexp))
                (parts (split-string normalized nil t))
                (first-word (pop parts)))
-    (when-let
-        ((imp (and first-word
-                   (boundp 'checkdoc-common-verbs-wrong-voice)
-                   (cdr (assoc-string
-                         (downcase first-word)
-                         checkdoc-common-verbs-wrong-voice)))))
+    (when-let ((imp (and first-word
+                         (boundp 'checkdoc-common-verbs-wrong-voice)
+                         (cdr (assoc-string
+                               (downcase first-word)
+                               checkdoc-common-verbs-wrong-voice)))))
       (setq first-word (capitalize (seq-copy imp))))
     (concat first-word " " (string-join parts " "))))
 
@@ -1433,7 +1470,6 @@ Argument ITEMS is a list or vector that needs to be flattened."
          (mapcar #'gpt-doc-flatten-vectors (append items nil)))
         (t items)))
 
-
 (defun gpt-doc--inner-body (sexp)
   "Extract the body from a Lisp definition.
 
@@ -1476,7 +1512,6 @@ SEXP is an Emacs Lisp expression."
             (or (not prefix-name)
                 (string-prefix-p prefix-name (symbol-name it)))))
      inner)))
-
 
 (defun gpt-doc-join-sexps (sexps)
   "Join SEXPS into a string with newlines."
@@ -1570,9 +1605,6 @@ Argument SEXP is an S-expression to analyze for definitions and usages."
                     (setq found (not (nth 4 (syntax-ppss (point))))))
                   (when found (push curr-sexp sexps)))))))
         sexps))))
-
-
-
 
 (defun gpt-doc-get-related-defs (sexp)
   "Extract related definitions from a given `S-expression'.
@@ -1710,11 +1742,25 @@ only shallow related definitions are included."
            (while (and (gpt-doc-move-with #'backward-sexp)
                        (looking-at "[(]"))
              (save-excursion
-               (pcase-let ((`(,_type ,_name ,_old-doc ,beg ,end)
-                            (gpt-doc-get-current-doc-info)))
+               (pcase-let* ((`(,item . ,arg-end)
+                             (gpt-doc-get-sexp-with-doc-pos))
+                            (`(,_type ,_name ,_old-doc ,beg ,end)
+                             (gpt-doc-get-current-doc-info)))
                  (goto-char end)
                  (while (re-search-backward "[\\]n" beg t 1)
-                   (replace-match "\n")))))))))))
+                   (replace-match "\n"))
+                 (goto-char arg-end)
+                 (when (and (looking-back "\\_<\\(nil\\)\\_>" 0)
+                            (memq (car-safe item)
+                                  (list 'defsubst 'defmacro 'defun 'cl-defun
+                                        'cl-defmacro
+                                        'transient-define-suffix
+                                        'transient-define-prefix
+                                        'transient-define-argument
+                                        'transient-define-infix)))
+                   (skip-chars-backward "a-z")
+                   (delete-region (point) arg-end)
+                   (insert "()")))))))))))
 
 (defun gpt-doc-show-in-popup (str &optional buff-name action setup-fn)
   "Display string or result in a popup buffer.
@@ -1766,6 +1812,14 @@ the popup buffer is created."
       ((`(,beg . ,_end)
         (gpt-doc-elisp-bounds-of-def-sexp)))
     beg))
+
+(defun gpt-doc-get-sexp-as-string ()
+  "Return the string representation of the nearest parent definition."
+  (pcase-let
+      ((`(,beg . ,end)
+        (gpt-doc-elisp-bounds-of-def-sexp)))
+    (when (and beg end)
+      (buffer-substring-no-properties beg end))))
 
 (defun gpt-doc-get-sexp-with-doc-pos ()
   "Extracts the sexp and its documentation position from the current function."
@@ -1876,7 +1930,6 @@ Argument MODEL is a string representing the API model for OpenAI."
                              (display-sort-function . ,display-sort-fn))
                          (complete-with-action action alist str pred))))))
 
-
 (defun gpt-doc-flymake-duplicate-docstrings-in-file (&optional file)
   "Detect and print duplicate docstrings in a FILE.
 
@@ -1986,7 +2039,6 @@ docstring diagnostics."
              :stderr " *stderr of gpt-doc-flymake-check-dups*"
              :noquery t)))))
 
-
 (defun gpt-doc-flymake-init ()
   "Initialize GPT-doc Flymake for duplicate docstring checking."
   (add-hook 'flymake-diagnostic-functions
@@ -2004,7 +2056,6 @@ flymake."
   (gpt-doc-flymake-init)
   (when (fboundp 'flymake-start)
     (flymake-start)))
-
 
 (defun gpt-doc-collect-doc-dups ()
   "Collect duplicate documentation strings from a given buffer."
@@ -2053,7 +2104,7 @@ Argument DOC-INFO is a list that contains information about the documentation."
     found))
 
 (defun gpt-doc-get-current-doc-info ()
-  "Retrieve info about the current document element."
+  "Retrieve info about the current element to document."
   (pcase-let
       ((`(,sexp . ,doc-pos)
         (gpt-doc-get-sexp-with-doc-pos)))
@@ -2074,7 +2125,8 @@ Argument DOC-INFO is a list that contains information about the documentation."
                                                                end)))
                     (list curr
                           start
-                          end))))))))
+                          end
+                          (gpt-doc-get-sexp-as-string)))))))))
 
 (defun gpt-doc-curr-sexp-documented-p ()
   "Check if current s-expression has a docstring."
@@ -2104,7 +2156,6 @@ information."
                              response)
           (goto-char tracking-marker)
           (gpt-doc-insert-with-fill (gpt-doc-escape-doc-str response)))))))
-
 
 (defun gpt-doc-insert-with-fill (response)
   "Insert text and format as a paragraph.
@@ -2164,9 +2215,12 @@ aborted."
             (delete-process proc))
           (kill-buffer req-buff))))
     (gpt-doc-restore-abort-marker marker))
-  (if (eq url-buff t)
-      (setq gpt-doc--request-url-buffers nil)
-    (assq-delete-all url-buff gpt-doc--request-url-buffers)))
+  (setq gpt-doc--request-url-buffers
+        (if (eq url-buff t)
+            nil
+          (assq-delete-all url-buff gpt-doc--request-url-buffers)))
+  (when (symbol-value 'gpt-doc-mode)
+    (gpt-doc-mode -1)))
 
 (defun gpt-doc-restore-abort-marker (marker)
   "Restore text properties and clean up after aborting a request.
@@ -2227,6 +2281,11 @@ Argument RESPONSE is a plist containing the API response data."
 (defvar gpt-doc--debug-data-raw nil
   "Stores raw data for debugging purposes.")
 
+(defun gpt-doc-refontify-region (start end)
+  "Trigger refontification from START to END."
+  (font-lock-flush start end)
+  (font-lock-ensure start end))
+
 (defun gpt-doc-after-change-hook (info)
   "Parse and insert GPT-generated Emacs Lisp documentation.
 
@@ -2279,19 +2338,28 @@ Argument INFO is a property list containing various request-related data."
                                    (plist-get info
                                               :position)))
                               (with-current-buffer buffer
-                                (save-excursion
-                                  (when tracking-marker
-                                    (goto-char tracking-marker))
-                                  (when final-callback
-                                    (funcall
-                                     final-callback))
-                                  (when start-marker
-                                    (goto-char start-marker))
-                                  (gpt-doc-remove-text-props))
-                                (setq gpt-doc--request-url-buffers
-                                      (assq-delete-all
-                                       (plist-get info :request-buffer)
-                                       gpt-doc--request-url-buffers)))))
+                                (let* ((beg
+                                        (when start-marker
+                                          (marker-position start-marker)))
+                                       (end
+                                        (when tracking-marker
+                                          (marker-position tracking-marker))))
+                                  (save-excursion
+                                    (gpt-doc-refontify-region beg end)
+                                    (when tracking-marker
+                                      (goto-char tracking-marker))
+                                    (when final-callback
+                                      (funcall
+                                       final-callback))
+                                    (when start-marker
+                                      (goto-char start-marker))
+                                    (gpt-doc-remove-text-props))
+                                  (setq gpt-doc--request-url-buffers
+                                        (assq-delete-all
+                                         (plist-get info :request-buffer)
+                                         gpt-doc--request-url-buffers)))
+                                (when (symbol-value 'gpt-doc-mode)
+                                  (gpt-doc-mode -1)))))
                           (set-marker
                            request-marker
                            (point)))
@@ -2322,9 +2390,9 @@ Argument INFO is a property list containing various request-related data."
                           request-marker))))))))))))))
 
 (defun gpt-doc-retrieve-error (status)
-  "Display error details from a GPT request.
+  "Extract and format error details from STATUS.
 
-Argument STATUS is a plist containing the error information."
+Argument STATUS is a plist containing the status of the HTTP request."
   (pcase-let*
       ((status-error (plist-get status :error))
        (`(_err ,type ,code) status-error)
@@ -2361,7 +2429,7 @@ Argument STATUS is a plist containing the error information."
           prefix)))))
 
 (defun gpt-doc-show-error (text)
-  "Display error in a popup buffer.
+  "Display error message TEXT in a popup buffer.
 
 Argument TEXT is a string to be displayed in the error popup buffer."
   (gpt-doc-show-in-popup text
@@ -2371,10 +2439,29 @@ Argument TEXT is a string to be displayed in the error popup buffer."
                            (when (fboundp 'visual-line-mode)
                              (visual-line-mode 1)))))
 
-
-
 (defvar-local gpt-doc--bus nil)
-
+(defun gpt-doc--abort-read-key ()
+  "Abort `read-key' sequence after a set number of `keyboard-quit' presses."
+  (let ((last-key)
+        (len 0))
+    (while (and len (< len gpt-doc-abort-on-keyboard-quit-count)
+                (setq last-key
+                      (read-key-sequence-vector "")))
+      (unwind-protect
+          (setq last-key
+                (read-key-sequence-vector ""))
+        (if (member last-key
+                    (where-is-internal 'keyboard-quit nil nil t t))
+            (message
+             (substitute-command-keys
+              "gpt-doc: Press `\\[keyboard-quit]' %d more times to force interruption.")
+             (- gpt-doc-abort-on-keyboard-quit-count len))
+          (setq unread-command-events
+                (append last-key
+                        unread-command-events))
+          nil))
+      (setq len (1+ len)))
+    last-key))
 (defun gpt-doc-command-watcher ()
   "Monitor `keyboard-quit' commands and handle GPT documentation aborts."
   (cond ((and gpt-doc--request-url-buffers
@@ -2382,11 +2469,13 @@ Argument TEXT is a string to be displayed in the error popup buffer."
          (push this-command gpt-doc--bus)
          (let ((len (length gpt-doc--bus)))
            (cond ((>= len gpt-doc-abort-on-keyboard-quit-count)
-                  (message  "gpt-doc: Aborting")
+                  (message nil)
+                  (minibuffer-message  "gpt-doc: Aborting")
                   (setq gpt-doc--bus nil)
                   (gpt-doc-abort-all))
                  ((< len gpt-doc-abort-on-keyboard-quit-count)
-                  (message
+                  (message nil)
+                  (minibuffer-message
                    (substitute-command-keys
                     "gpt-doc: Press `\\[keyboard-quit]' %d more times to force interruption.")
                    (- gpt-doc-abort-on-keyboard-quit-count len))))))
@@ -2399,7 +2488,7 @@ Argument TEXT is a string to be displayed in the error popup buffer."
 Enable `gpt-doc-mode' to monitor and handle `keyboard-quit' commands for
 aborting GPT documentation requests.
 
-When active, pressing `keyboard-quit' multiple times can trigger the
+When active, pressing `\\[keyboard-quit]' multiple times can trigger the
 cancellation of ongoing documentation generation processes.
 
 See also custom variable `gpt-doc-abort-on-keyboard-quit-count' for exact
@@ -2408,9 +2497,8 @@ number of `keyboard-quit' presses to abort."
   :global nil
   (if gpt-doc-mode
       (add-hook 'post-command-hook #'gpt-doc-command-watcher nil 'local)
-    (remove-hook 'post-command-hook #'gpt-doc-command-watcher 'local)))
-
-
+    (remove-hook 'post-command-hook #'gpt-doc-command-watcher 'local)
+    (setq gpt-doc--bus nil)))
 
 (defun gpt-doc-stream-request (user-prompt system-prompt &optional
                                            final-callback buffer position)
@@ -2467,7 +2555,7 @@ or region end is used."
             (let ((err (plist-get response :error)))
               (if err
                   (progn
-                    (message "gpt-doc-callback err %s"
+                    (message "gpt-doc-callback error: %s"
                              (or
                               (plist-get err
                                          :message)
@@ -2491,7 +2579,9 @@ or region end is used."
              (let* ((buff (current-buffer))
                     (err
                      (gpt-doc-retrieve-error status)))
-               (when err
+               (if (not err)
+                   (when (symbol-value 'gpt-doc-mode)
+                     (gpt-doc-mode -1))
                  (run-with-timer 0.5 nil #'gpt-doc-abort-url-retrieve buff)
                  (message err))))))
     (plist-put info :request-buffer request-buffer)
@@ -2607,7 +2697,6 @@ process is completed."
                           'gpt-doc-old (or old-doc t)))
       (forward-char -1))))
 
-
 (defun gpt-doc-jump-to-last-valid-sexp (&optional undocumented)
   "Jump to the last valid S-expression.
 
@@ -2694,7 +2783,6 @@ will be used as default.
                               gpt-doc-default-context-strategy)
                           callback))))))
 
-
 ;;;###autoload
 (defun gpt-doc-document-all-undocumented (&optional with-related-defs here)
   "Generate documentation for all undocumented definitions in the buffer.
@@ -2706,11 +2794,13 @@ If WITH-RELATED-DEFS is omitted, `gpt-doc-default-context-strategy'
 will be used as default.
 
 - If WITH-RELATED-DEFS is 1, no related definitions are included.
+
 - If WITH-RELATED-DEFS is 4 (shallow), include related definitions that are
   directly used in the definition being documented (e.g., functions called
   within the function).
-- If WITH-RELATED-DEFS is 16 (all), recursively include all related definitions,
-  expanding the documentation context.
+
+- If WITH-RELATED-DEFS is 16 (all), recursively include all related
+  definitions,expanding the documentation context.
 
 Optional argument HERE is a boolean flag indicating whether to jump to the last
 valid sexp that lacks documentation. If non-nil, the function will consider
@@ -2738,7 +2828,6 @@ sexps without documentation; otherwise, it defaults to considering all sexps."
                                     (gpt-doc-document-all-undocumented
                                      with-related-defs
                                      t))))))))))))
-
 
 ;;;###autoload
 (defun gpt-doc-redocument-all (&optional with-related-defs here)
@@ -2847,6 +2936,8 @@ During streaming, active requests in the buffer can be aborted with command
         (with-current-buffer buff
           (barf-if-buffer-read-only)
           (gpt-doc--pre-init)
+          (when gpt-doc-allow-abort-mode
+            (gpt-doc-mode 1))
           (gpt-doc-stream-request
            user-prompt
            system-summary-prompt
