@@ -484,13 +484,13 @@ Argument ARGS is a list of arguments for `message'."
 Return new position if changed, nil otherwise."
   (unless n (setq n 1))
   (with-syntax-table emacs-lisp-mode-syntax-table
-    (when-let ((str-start (nth 8 (syntax-ppss (point)))))
+    (when-let* ((str-start (nth 8 (syntax-ppss (point)))))
       (goto-char str-start))
     (let ((init-pos (point))
           (pos)
           (count n))
       (while (and (not (= count 0))
-                  (when-let ((end (ignore-errors
+                  (when-let* ((end (ignore-errors
                                     (funcall fn)
                                     (point))))
                     (unless (= end (or pos init-pos))
@@ -820,7 +820,7 @@ expression."
 Argument SEXP is the s-expression to extract argument names from.
 
 Argument STR is the string to upcase arguments in."
-  (if-let ((args-names (mapcar #'symbol-name
+  (if-let* ((args-names (mapcar #'symbol-name
                                (gpt-doc-get-args sexp))))
       (gpt-doc-upcase-arg-list str args-names)
     str))
@@ -936,7 +936,7 @@ Argument STR is the string to upcase arguments in."
                                                    (gpt-doc-elisp-bounds-of-def-sexp)))
                                                (when start
                                                  (goto-char start))))))
-          (when-let ((fp (checkdoc-defun-info)))
+          (when-let* ((fp (checkdoc-defun-info)))
             (with-syntax-table checkdoc-syntax-table
               (checkdoc-this-string-valid-engine fp))))))))
 
@@ -953,7 +953,7 @@ Argument STR is the string to upcase arguments in."
   "Check if position is visible in window.
 
 Argument POS is the buffer position to check for visibility within the window."
-  (when-let ((wnd (get-buffer-window (current-buffer))))
+  (when-let* ((wnd (get-buffer-window (current-buffer))))
     (with-selected-window wnd
       (< (window-start)
          pos
@@ -995,7 +995,7 @@ Argument POS is the buffer position to check for visibility within the window."
                       (or (nth 3 (syntax-ppss (point)))
                           (when (nth 3 (syntax-ppss (1- (point))))
                             (setq done t)))))
-        (when-let ((start (and (>= (current-column) 80)
+        (when-let* ((start (and (>= (current-column) 80)
                                (save-excursion
                                  (progn
                                    (forward-paragraph -1)
@@ -1187,7 +1187,7 @@ Argument SEXP is the s-expression to be formatted."
 Argument SEXP is the symbolic expression to analyze.
 
 Return the final system prompt string with all necessary substitutions made."
-  (when-let ((args
+  (when-let* ((args
               (or (cdr (assq (car sexp) gpt-doc-special-prompts))
                   (gpt-doc-get-args-names sexp))))
     (let* ((name (format "%s" (cadr sexp)))
@@ -1372,7 +1372,7 @@ that will be joined with the main SEXP for documentation generation."
                             sexp))
                (parts (split-string normalized nil t))
                (first-word (pop parts)))
-    (when-let ((imp (and first-word
+    (when-let* ((imp (and first-word
                          (boundp 'checkdoc-common-verbs-wrong-voice)
                          (cdr (assoc-string
                                (downcase first-word)
@@ -1432,12 +1432,12 @@ outside of any parentheses, comments, or strings encountered in the scan."
         (package-name (progn
                         (require 'lisp-mnt)
                         (when (fboundp 'lm-get-package-name)
-                          (when-let ((name (lm-get-package-name)))
+                          (when-let* ((name (lm-get-package-name)))
                             (file-name-sans-extension name))))))
     (save-excursion
       (goto-char (point-max))
       (while (gpt-doc-move-with #'backward-sexp)
-        (when-let ((sexp (sexp-at-point)))
+        (when-let* ((sexp (sexp-at-point)))
           (when (and (proper-list-p sexp)
                      (symbolp (cadr sexp))
                      (or (not package-name)
@@ -1519,7 +1519,7 @@ SEXP is an Emacs Lisp expression."
     (let ((emacs-lisp-mode-hook nil))
       (emacs-lisp-mode)
       (dolist (it (reverse sexps))
-        (when-let ((str (or (ignore-errors (pp-to-string it))
+        (when-let* ((str (or (ignore-errors (pp-to-string it))
                             (prin1-to-string it))))
           (setq str (replace-regexp-in-string
                      "[(]\\(\\(\\(cl-\\)defmacro\\|defsubst\\|defun\\)[\s\t\n]\\(\\(?:\\w\\|\\s_\\|\\\\.\\)+\\)\\|lambda\\)[\s\t\n]+\\_<\\(nil\\)\\_>"
@@ -1614,7 +1614,7 @@ Argument SEXP is a symbolic expression (sexp) in Emacs Lisp."
       ((package-name (progn
                        (require 'lisp-mnt)
                        (when (fboundp 'lm-get-package-name)
-                         (when-let ((name (lm-get-package-name)))
+                         (when-let* ((name (lm-get-package-name)))
                            (file-name-sans-extension name)))))
        (all-defs (gpt-doc-get-all-buffer-definitions))
        (filtered-defs (seq-remove (pcase-lambda (`(,_n . ,item))
@@ -1662,7 +1662,7 @@ their position in the original list of all definitions."
       ((package-name (progn
                        (require 'lisp-mnt)
                        (when (fboundp 'lm-get-package-name)
-                         (when-let ((name (lm-get-package-name)))
+                         (when-let* ((name (lm-get-package-name)))
                            (file-name-sans-extension name)))))
        (all-defs (gpt-doc-get-all-buffer-definitions))
        (filtered-defs (seq-remove (pcase-lambda (`(,_n . ,item))
@@ -1700,7 +1700,7 @@ Argument STRATEGY is an integer or boolean that determines the method used to
 find related definitions."
   (if (eq strategy t)
       (mapcar #'cdr (gpt-doc-get-all-buffer-definitions))
-    (when-let ((fn
+    (when-let* ((fn
                 (pcase strategy
                   (4 #'gpt-doc-get-shallow-related-defs)
                   (16 #'gpt-doc-get-related-defs))))
@@ -1901,7 +1901,7 @@ Argument MODEL is a string representing the API model for OpenAI."
                                 it))
                         models))
          (annotf (lambda (str)
-                   (when-let ((data (cdr (assoc str alist))))
+                   (when-let* ((data (cdr (assoc str alist))))
                      (concat
                       "  "
                       (string-join (delq nil (list
@@ -2071,7 +2071,7 @@ flymake."
                         doc))
             (when (and doc doc-str beg
                        (not (get-text-property (1+ beg) 'gpt-doc)))
-              (if-let ((cell (assoc-string doc-str alist)))
+              (if-let* ((cell (assoc-string doc-str alist)))
                   (setcdr cell (append (cdr cell)
                                        (list doc)))
                 (let ((cell (cons doc-str (list doc))))
@@ -2235,7 +2235,7 @@ the text properties should be restored."
         (save-excursion
           (gpt-doc-goto-char marker)
           (gpt-doc-restore-text-props))))
-    (when-let ((cell (rassq marker gpt-doc--request-url-buffers)))
+    (when-let* ((cell (rassq marker gpt-doc--request-url-buffers)))
       (setcdr cell nil))))
 
 (defun gpt-doc--abort-all ()
@@ -2403,7 +2403,7 @@ Argument STATUS is a plist containing the status of the HTTP request."
                            'url-http-end-of-headers)
                           url-http-end-of-headers)
                  (goto-char url-http-end-of-headers))
-               (when-let ((err (ignore-errors
+               (when-let* ((err (ignore-errors
                                  (cdr-safe
                                   (assq 'error
                                         (gpt-doc-json--read-buffer
@@ -2725,7 +2725,7 @@ sexps."
 
 (defun gpt-doc-backward-to-undocumented ()
   "Navigate backward to the first undocumented element."
-  (when-let ((start (gpt-doc-get-curr-sexp-start)))
+  (when-let* ((start (gpt-doc-get-curr-sexp-start)))
     (gpt-doc-goto-char start))
   (while
       (when (or (pcase-let ((`(,item-type ,_n ,doc ,_end)
@@ -2809,7 +2809,7 @@ sexps without documentation; otherwise, it defaults to considering all sexps."
   (if here
       (gpt-doc-backward-to-undocumented)
     (gpt-doc-jump-to-last-valid-sexp t))
-  (when-let ((start (gpt-doc-get-curr-sexp-start)))
+  (when-let* ((start (gpt-doc-get-curr-sexp-start)))
     (gpt-doc-goto-char start)
     (let ((prev-marker (set-marker (make-marker)
                                    (point))))
@@ -2851,7 +2851,7 @@ will be used as default.
 
 When streaming, requests can be aborted with command `gpt-doc-abort-all'."
   (interactive "P")
-  (when-let ((start (or (gpt-doc-get-curr-sexp-start)
+  (when-let* ((start (or (gpt-doc-get-curr-sexp-start)
                         (and
                          (not here)
                          (gpt-doc-jump-to-last-valid-sexp)
