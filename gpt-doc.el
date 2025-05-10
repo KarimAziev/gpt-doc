@@ -137,7 +137,7 @@ can be taken."
   :group 'gpt-doc
   :type 'boolean)
 
-(defcustom gpt-doc-gpt-model "gpt-4-1106-preview"
+(defcustom gpt-doc-gpt-model "o3-mini"
   "A string variable representing the API model for OpenAI."
   :group 'gpt-doc
   :type 'string)
