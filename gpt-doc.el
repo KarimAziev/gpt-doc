@@ -126,6 +126,23 @@ Conversely, to increase randomness, raise the value closer to 1.0."
   :group 'gpt-doc
   :type 'number)
 
+
+(defcustom gpt-doc-models-unsupported-params '(("gpt-5" :temperature)
+                                               ("gpt-5-mini" :temperature)
+                                               ("gpt-5-nano" :temperature))
+  "Alist mapping model names to unsupported parameter keywords.
+
+An alist mapping GPT model names to a list of unsupported parameter
+keywords. Each entry in the alist consists of a model name as a
+string and a list of symbols representing parameters that are not
+supported by that model."
+  :group 'gpt-doc
+  :type '(alist
+          :key-type
+          (string :tag "Model")
+          :value-type
+          (repeat :tag "Keywords" symbol)))
+
 (defcustom gpt-doc-use-stream t
   "Whether to use streaming responses from the OpenAI API.
 
@@ -137,7 +154,7 @@ can be taken."
   :group 'gpt-doc
   :type 'boolean)
 
-(defcustom gpt-doc-gpt-model "o3-mini"
+(defcustom gpt-doc-gpt-model "gpt-4o"
   "A string variable representing the API model for OpenAI."
   :group 'gpt-doc
   :type 'string)
@@ -2500,6 +2517,20 @@ number of `keyboard-quit' presses to abort."
     (remove-hook 'post-command-hook #'gpt-doc-command-watcher 'local)
     (setq gpt-doc--bus nil)))
 
+(defun gpt-doc--plist-remove (keys plist)
+  "Remove KEYS and values from PLIST."
+  (let* ((result (list 'head))
+         (last result))
+    (while plist
+      (let* ((key (pop plist))
+             (val (pop plist))
+             (new (and (not (memq key keys))
+                       (list key val))))
+        (when new
+          (setcdr last new)
+          (setq last (cdr new)))))
+    (cdr result)))
+
 (defun gpt-doc-stream-request (user-prompt system-prompt &optional
                                            final-callback buffer position)
   "Send GPT stream request with USER-PROMPT and SYSTEM-PROMPT.
@@ -2540,15 +2571,19 @@ or region end is used."
                                       ("Content-Type" . "application/json")))
          (url-request-method "POST")
          (url-request-data (gpt-doc-encode-json
-                            (list
-                             :messages
-                             (apply #'vector `((:role "system"
-                                                :content ,system-prompt)
-                                               (:role "user"
-                                                :content ,user-prompt)))
-                             :model gpt-doc-gpt-model
-                             :temperature gpt-doc-gpt-temperature
-                             :stream t)))
+                            (gpt-doc--plist-remove
+                             (cdr
+                              (assoc-string gpt-doc-gpt-model
+                                            gpt-doc-models-unsupported-params))
+                             (list
+                              :messages
+                              (apply #'vector `((:role "system"
+                                                 :content ,system-prompt)
+                                                (:role "user"
+                                                 :content ,user-prompt)))
+                              :model gpt-doc-gpt-model
+                              :temperature gpt-doc-gpt-temperature
+                              :stream t))))
          (request-buffer)
          (callback
           (lambda (response)
@@ -2571,6 +2606,7 @@ or region end is used."
                      (gpt-doc-stream-get-content
                       response)
                      info))))))))
+    (message "gpt-doc-gpt-model=`%S'" gpt-doc-gpt-model)
     (plist-put info :callback callback)
     (setq request-buffer
           (url-retrieve
