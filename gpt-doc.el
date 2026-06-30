@@ -127,7 +127,9 @@ Conversely, to increase randomness, raise the value closer to 1.0."
   :type 'number)
 
 
-(defcustom gpt-doc-models-unsupported-params '(("gpt-5" :temperature)
+(defcustom gpt-doc-models-unsupported-params '(("gpt-5.5" :temperature)
+                                               ("gpt-5" :temperature)
+                                               ("gpt-5.4" :temperature)
                                                ("gpt-5-mini" :temperature)
                                                ("gpt-5-nano" :temperature))
   "Alist mapping model names to unsupported parameter keywords.
@@ -2606,7 +2608,6 @@ or region end is used."
                      (gpt-doc-stream-get-content
                       response)
                      info))))))))
-    (message "gpt-doc-gpt-model=`%S'" gpt-doc-gpt-model)
     (plist-put info :callback callback)
     (setq request-buffer
           (url-retrieve
@@ -2629,6 +2630,7 @@ or region end is used."
                 (lambda (&rest _)
                   (gpt-doc-after-change-hook info))
                 nil t))))
+
 
 (defun gpt-doc-arg-system-prompt (arg-user-prompt arg-system-prompt &optional
                                                   callback)
